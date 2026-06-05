@@ -69,7 +69,7 @@
 
 ### Docker 一键启动
 
-`ash
+`bash
 cp .env.example .env
 # 编辑 .env 填入 JWT_SECRET、SMTP、高德API Key
 docker compose up -d
@@ -80,7 +80,7 @@ docker compose up -d
 
 ### 开发模式
 
-`ash
+`bash
 cd backend && npm install && npm run dev
 cd frontend-vue && npm install && npm run dev
 # 编译检查
@@ -174,18 +174,6 @@ cd frontend-vue && npx vue-tsc --noEmit
   -> convertGeoJSONCoords(WGS-84 -> GCJ-02)
   -> 前端 AMap 渲染 (GCJ-02 底图)
 `
-
----
-
-## 文档索引
-
-| 文档 | 说明 |
-|------|------|
-| [审计与改进计划书](docs/审计与改进计划书.md) | 端到端审计 + 38项待办 + 路线图 |
-| [安全风险修复计划](docs/安全风险修复计划.md) | 四阶段安全加固 (已完成) |
-| [HTTPS 部署指南](docs/https-setup.md) | certbot + nginx SSL |
-| [OSRM 部署指南](docs/osrm-deployment.md) | 路网服务部署 |
-| [POI 采集指南](docs/poi-collector-guide.md) | 高德 POI 批量采集 |
 
 ---
 
