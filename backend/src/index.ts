@@ -1,0 +1,145 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
+
+// Load .env manually
+try {
+  const envPath = resolve(__dirname, "..", "..", ".env");
+  const envFile = readFileSync(envPath, "utf-8");
+  for (const line of envFile.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx > 0) {
+        const key = trimmed.substring(0, eqIdx).trim();
+        const val = trimmed.substring(eqIdx + 1).trim();
+        if (!process.env[key]) process.env[key] = val;
+      }
+    }
+  }
+} catch (e) {
+  // .env file not found, use system env vars
+}
+
+import 'express-async-errors';
+import express from "express";
+import cors from "cors";
+import path from "path";
+import { config } from "./config";
+import { testConnection } from "./db";
+import { connectRedis } from "./services/cacheService";
+import './workers/analysisWorker';
+import webController from "./controllers/webController";
+import apiV1Controller from "./controllers/apiV1Controller";
+import authController from "./controllers/authController";
+import { authRequired } from "./middleware/auth";
+import { errorHandler } from "./middleware/errorHandler";
+import logger from "./utils/logger";
+import { globalLimiter } from "./middleware/rateLimit";
+
+const app = express();
+
+const allowedOrigin = process.env.APP_URL || "http://localhost:8080";
+app.use(cors({ origin: allowedOrigin, credentials: true }));
+app.use(globalLimiter);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+const publicPath = path.resolve(__dirname, "..", "..", "public");
+app.use(express.static(publicPath));
+
+app.use("/api/web", webController);
+app.use("/api/auth", authController);
+app.use("/api/v1", apiV1Controller);
+
+// 4.5 Enhanced health check with Redis status
+app.get("/api/health", async (_req, res) => {
+  try {
+    const { testConnection } = require("./db");
+    const { getRedis } = require("./services/cacheService");
+    const dbOk = await testConnection();
+    const redisOk = getRedis()?.status === "ready" || getRedis()?.status === "connect";
+
+    res.json({
+      status: dbOk ? "healthy" : "degraded",
+      database: dbOk ? "connected" : "disconnected",
+      redis: redisOk ? "connected" : "disconnected",
+      uptime: process.uptime(),
+      memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    res.status(503).json({ status: "unhealthy" });
+  }
+});
+
+// 4.5 Readiness probe: checks DB + Redis
+app.get("/api/health/readiness", async (_req, res) => {
+  try {
+    const { testConnection } = require("./db");
+    const { getRedis } = require("./services/cacheService");
+    const dbOk = await testConnection();
+    const redisOk = getRedis()?.status === "ready" || getRedis()?.status === "connect";
+
+    if (dbOk && redisOk) {
+      res.json({ status: "ready" });
+    } else {
+      res.status(503).json({ status: "not_ready", database: dbOk, redis: redisOk });
+    }
+  } catch {
+    res.status(503).json({ status: "not_ready" });
+  }
+});
+
+
+// 4.11 Report export - returns JSON with all analysis data for frontend rendering
+app.get("/api/web/projects/:id/export/report", authRequired, async (req, res) => {
+  try {
+    const { getProjectSummary } = require("./services/projectService");
+    const { computeCoverage, computeKDEHeatmap, computeClusters } = require("./services/spatialAnalysis");
+    const projectId = req.params.id;
+    const summary = await getProjectSummary(projectId);
+    if (!summary) { res.status(404).json({ error: "项目不存在" }); return; }
+
+    const report: any = {
+      summary,
+      generatedAt: new Date().toISOString(),
+    };
+
+    try { report.coverage = await computeCoverage(projectId, 3000); } catch (e: any) { report.coverage = { error: e.message }; }
+    try { report.heatmap = await computeKDEHeatmap(projectId); } catch (e: any) { report.heatmap = { error: e.message }; }
+    try { report.clusters = await computeClusters(projectId); } catch (e: any) { report.clusters = { error: e.message }; }
+
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(publicPath, "index.html"));
+});
+
+// Unified error handler (must be registered last)
+app.use(errorHandler);
+
+async function start() {
+  const dbOk = await testConnection();
+  if (!dbOk) {
+    logger.fatal("Cannot start without database");
+    process.exit(1);
+  }
+
+  // Connect Redis (non-fatal)
+  await connectRedis();
+
+  app.listen(config.port, () => {
+    logger.info("=============================================");
+    logger.info("  区域数据分析平台 v1.0");
+    logger.info({ port: config.port, env: config.nodeEnv }, "Server listening");
+    logger.info("=============================================");
+  });
+}
+
+start().catch((err) => logger.fatal(err, "Startup failed"));
+
+export default app;

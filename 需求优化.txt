@@ -1,0 +1,167 @@
+# 区域数据分析平台 v1.0 完整改进清单与执行计划
+
+## 总览
+
+v1.0 定义为「可安全对外试用的商业化 MVP」。基于已完成的代码实施（5 Phase），补齐安全认证、大数据处理、前端可视化三个维度的剩余缺口。总计 **33 项改进**，分 3 个阶段执行，预估 **10-13 个工作日**。
+
+---
+
+## 阶段一：安全认证加固（3 天）
+
+> 优先级：最高。不做无法让真实用户注册使用。
+
+| # | 项目 | 具体做法 | 涉及文件 | 工作量 |
+|---|------|---------|---------|--------|
+| **1.1** | 注册接口加限流 | `/register` 路由挂 `loginLimiter`，5次/min/IP，防脚本批量注册 | `authController.ts` | 10min |
+| **1.2** | 密码复杂度增强 | 最小 8 位，必须同时包含字母和数字，注册时前端+后端双重校验 | `authController.ts`、`LoginView.vue` | 30min |
+| **1.3** | 账户失败锁定 | `users` 表加 `failed_attempts INT DEFAULT 0` + `locked_until TIMESTAMPTZ`；登录接口：失败自增计数，≥5 次锁定 15 分钟，成功后重置 | `init.sql`、`authController.ts` | 1h |
+| **1.4** | 登录失败常数时间响应 | 用户不存在时执行一次假的 `bcrypt.compare(someFakeHash)`，消除时序攻击面 | `authController.ts` | 30min |
+| **1.5** | 密码重置流程 | `POST /api/auth/forgot-password` — 按邮箱查用户 → 生成 reset token（UUID+1h过期）→ 发邮件；`POST /api/auth/reset-password` — 校验 token → 更新密码 → 删除 token。新增 `password_reset_tokens` 表 | `authController.ts`、`init.sql` | 1天 |
+| **1.6** | 注册邮件验证码（OTP） | 注册改为三步：提交邮箱+密码 → 创建未激活账户（`status='pending'`）→ 生成 6 位数字 OTP → 发邮件 → `POST /api/auth/verify-email` 校验 OTP → 激活账户。`users` 表加 `status VARCHAR(20)` + `email_otp` + `otp_expires_at` | `authController.ts`、`init.sql` | 1.5天 |
+| **1.7** | JWT_SECRET 更换 | 生成随机密钥写入 `.env`，代码中硬编码回退到空字符串（强制配置） | `.env`、`auth.ts` | 5min |
+| **1.8** | 前端 auth 路由守卫 | `router/index.ts` 加 `beforeEach`：除 `/login` 外所有路由要求登录，未登录重定向 | `router/index.ts` | 30min |
+
+---
+
+## 阶段二：大数据处理优化（4-5 天）
+
+> 优先级：高。不改造则 >50MB 文件无法上传、>5000 点前端卡死。
+
+| # | 项目 | 具体做法 | 涉及文件 | 工作量 |
+|---|------|---------|---------|--------|
+| **2.1** | 大文件分片上传 | 前端：安装 `tus-js-client`，创建 `useChunkedUpload` composable，5MB/片；后端：安装 `tus-node-server`，挂载到 `/api/web/upload/tus`，替换 multer memoryStorage。保留旧 `/upload` 接口兼容小文件（<10MB） | `useChunkedUpload.ts`、`webController.ts` | 1天 |
+| **2.2** | 流式 Excel 解析 | `webController.ts` 上传逻辑改为分批读取：用 `XLSX.utils.sheet_to_json` 的 `range` 参数每批 5000 行，逐批校验+入库+释放内存 | `webController.ts` | 0.5天 |
+| **2.3** | 入库分批加固 | `projectService.ts` 的 `helpers.insert` 加批次循环（每批最多 2000 行），避免单次 SQL 超长 | `projectService.ts` | 15min |
+| **2.4** | 前端点位分页 | `GET /projects/:id/points` 增加 `?page=1&limit=500` 参数，默认 limit=500。返回 `{ points, total, page, totalPages }`。前端 `projectStore.loadProject` 改为分页加载 | `webController.ts`、`projectStore.ts`、`api/index.ts` | 1天 |
+| **2.5** | 前端渲染防卡死 | `AMap.MarkerCluster` 插件集成：`useAmap.ts` 补充 `addClusterLayer(points)` 方法，点数 >200 时启用聚合（缩小时自动合并），<200 时显示单个 Marker。`DashboardView.vue` 中加载后调用 | `useAmap.ts`、`DashboardView.vue` | 0.5天 |
+| **2.6** | 令牌桶全局限流优化 | `rateLimit.ts` 按账户维度增加第二层限流：登录接口 keyGenerator 改为 `ip + ":" + (email or "")`，既防 IP 池轮换也防同 IP 锁定全公司 | `rateLimit.ts` | 30min |
+| **2.7** | Redis 内存限制 | `docker-compose.yml` redis 容器设置 `command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru`，防止 OOM | `docker-compose.yml` | 10min |
+
+---
+
+## 阶段三：前端可视化 + 体验补全（3-4 天）
+
+> 优先级：中。数据能分析但地图上看不见 = 体验断崖。
+
+| # | 项目 | 具体做法 | 涉及文件 | 工作量 |
+|---|------|---------|---------|--------|
+| **3.1** | 覆盖范围图层渲染 | `DashboardView.vue` 监听 `CoveragePanel` 的 `@result`，解析 `geojson.covered` 和 `geojson.uncovered`，用 `AMap.Polygon` 分别渲染蓝色半透明（覆盖）和红色半透明（盲区） | `DashboardView.vue` | 1h |
+| **3.2** | 热力图图层渲染 | `DashboardView.vue` 监听 `HeatmapPanel` 的 `@result`，用 `AMap.HeatMap` 渲染热点（提前在 `useAmap` 加载插件时的 plugin 列表中加入 `AMap.HeatMap`） | `DashboardView.vue`、`MapContainer.vue` | 1h |
+| **3.3** | 聚类气泡标注 | `DashboardView.vue` 监听 `ClusterPanel` 的 `@result`，在地图各聚类中心显示 `AMap.Text` 标注（"C0: 47点"），按聚类别着色 | `DashboardView.vue` | 1h |
+| **3.4** | 选址候选标注 | `DashboardView.vue` 监听 `SiteOptimizationPanel` 的 `@result`，Top1 绿色大标记、其余蓝色标记，infoWindow 显示评分详情 | `DashboardView.vue` | 1h |
+| **3.5** | H3 等值区域图 | `DashboardView.vue` 新增一个 tab 或切换按钮读取 `/h3-hexagons`，用 `AMap.Polygon` 渲染六边形网格，颜色按 count 从浅蓝→深蓝渐变 | `DashboardView.vue`、`components/dashboard/H3HexagonPanel.vue` | 1天 |
+| **3.6** | Toast 通知接入 | `LoginView.vue`、`UploadView.vue` 已接入，确认 `DashboardView.vue` 错误处理也走 toast | `DashboardView.vue` | 30min |
+
+---
+
+## 阶段四：基础设施收尾（1-2 天）
+
+> 优先级：中。可逐步完成，不影响核心功能可用性。
+
+| # | 项目 | 具体做法 | 涉及文件 | 工作量 |
+|---|------|---------|---------|--------|
+| **4.1** | 移除 better-sqlite3 | `package.json` 删除 `better-sqlite3` 和 `@types/better-sqlite3`，`npm install` 不再需要 `--ignore-scripts` | `package.json` | 5min |
+| **4.2** | .gitignore 补充 | 检查并添加 `.env`、`frontend-vue/node_modules`、`public/app`、`dist`、`.DS_Store` | `.gitignore` | 5min |
+| **4.3** | 分析结果缓存 | `analysisService.ts` 中查询前先检查 `analysis_results` 表：同 projectId + analysis_type + JSON params → 有缓存直接返回，无缓存计算后写入 | `analysisService.ts`、`webController.ts` | 0.5天 |
+| **4.4** | 分析任务异步化 | 分析接口从直接调用 `computeXxx()` 改为 `submitAnalysis()` → 返回 `taskId` → 前端 `TaskProgress` 轮询。WebSocket 推送暂不实现（可降级为轮询） | `webController.ts`、各 `XxxPanel.vue` | 1天 |
+| **4.5** | 健康检查增强 | `GET /api/health` 增加 Redis 连接检测 + 任务队列积压数 | `index.ts` | 30min |
+| **4.6** | HTTPS 证书 | nginx 添加 SSL 配置模板 + 文档说明如何接入 certbot（不在代码仓库自动执行） | `nginx/default-ssl.conf.example` + 文档 | 1h |
+| **4.7** | 数据库备份自动化 | docker-compose 增加 backup 容器（cron 每日 pg_dump + gzip，保留 7 天） | `docker-compose.yml` | 30min |
+| **4.8** | OSRM 部署文档 | 编写路网数据下载、预处理、容器启动的完整操作文档 | `docs/osrm-setup.md` | 30min |
+| **4.9** | POI 采集运行手册 | 编写 `poiCollector.ts` 运行指令 + 高德 API Key 配置说明 | `docs/poi-collector.md` | 15min |
+| **4.10** | API Key 前端管理界面 | `ApiKeysView.vue`：列出/创建/删除/启用禁用 API Key，复制功能 | `ApiKeysView.vue` + 路由 | 1天 |
+| **4.11** | PDF 报表导出 | `GET /api/web/projects/:id/report` → 渲染 HTML 模板 → puppeteer PDF，含项目概览+覆盖率+聚类+选址+建议 | `reportService.ts`、`webController.ts` | 2天 |
+| **4.12** | CI/CD 验证 | Github Actions 运行一次，确认 backend tsc + jest + frontend build 全部通过 | `.github/workflows/ci.yml` | 30min |
+
+---
+
+## 执行顺序与依赖
+
+```
+阶段一 (安全认证) ──────────────────────┐
+  ├── 1.1 注册限流                       │
+  ├── 1.2 密码复杂度                      │  独立并行
+  ├── 1.3 账户锁定                        │
+  ├── 1.4 常数时间响应                     │
+  ├── 1.5 密码重置 ← 依赖：邮件服务          │
+  ├── 1.6 邮件验证码 ← 依赖：邮件服务        │
+  ├── 1.7 JWT_SECRET                     │
+  └── 1.8 前端路由守卫                     │
+                                        │
+阶段二 (大数据优化) ──────────────────────┤
+  ├── 2.1 分片上传 ──→ 2.2 流式解析 ──→ 2.3 分批入库  串行
+  ├── 2.4 前端分页                       │  独立
+  ├── 2.5 聚合渲染                       │  独立
+  ├── 2.6 令牌桶限流                      │  独立
+  └── 2.7 Redis 内存                    │  独立
+                                        │
+阶段三 (可视化补全) ──────────────────────┤
+  ├── 3.1~3.4 四个图层                   │  独立并行
+  ├── 3.5 H3 等值图                      │  独立
+  └── 3.6 Toast 补全                     │  独立
+                                        │
+阶段四 (基础设施) ────────────────────────┘
+  ├── 4.1~4.2 清理         ← 随时可做
+  ├── 4.3 分析缓存         ← 依赖 4.4 异步化一起做
+  ├── 4.4 异步化           ← 依赖 BullMQ 已就绪
+  ├── 4.5 健康检查          ← 依赖 Redis 已部署
+  ├── 4.6~4.9 文档+配置     ← 无依赖
+  ├── 4.10 API Key 前端     ← 依赖 P3 前端已完成
+  ├── 4.11 PDF 导出         ← 依赖分析结果数据结构已稳定
+  └── 4.12 CI/CD 验证       ← 最后执行
+```
+
+---
+
+## v1.0 发布就绪检查清单
+
+```
+安全 🔒
+  □ JWT_SECRET 已更换为随机 64 位 hex
+  □ 密码最少 8 位 + 字母数字混合
+  □ 注册接口有 IP 限流（5次/min）
+  □ 登录接口有 IP+账户 双重限流
+  □ 连续 5 次密码错误锁定 15 分钟
+  □ 登录失败响应时间恒定（防时序攻击）
+  □ 新注册用户须邮件验证码激活
+  □ 密码重置流程可用（发邮件→重置）
+  □ NODE_ENV=production（不暴露 stack trace）
+  □ HTTPS 已启用
+
+稳定 ⚙️
+  □ better-sqlite3 已从依赖移除
+  □ docker compose up 全部容器 healthy
+  □ GET /api/health 返回 { status: "healthy" }
+  □ Redis maxmemory 已配置（256MB + allkeys-lru）
+  □ 数据库每日自动备份
+  □ CI/CD pipeline 通过（tsc + jest + build）
+
+数据流 📊
+  □ 大文件走分片上传（>10MB 自动分片）
+  □ Excel 流式解析（不再一次性加载全文件到内存）
+  □ 入库分批（每批 ≤2000 行）
+  □ 前端点位分页加载（默认 500/页）
+  □ >200 点自动启用聚合显示
+  □ 分析结果缓存（同参数秒级返回）
+
+功能 🎯
+  □ 注册 → 邮件验证 → 登录 → 上传 → 分析 全流程通过
+  □ 覆盖范围/热力图/聚类/选址 四个分析面板结果正确渲染在地图上
+  □ H3 等值区域图可切换
+  □ 未登录自动跳转 /login
+  □ 错误提示统一走 toast
+  □ 隐私政策/用户协议页面可访问
+
+文档 📖
+  □ .env.example 包含所有必需环境变量说明
+  □ OSRM 部署文档
+  □ POI 采集运行手册
+```
+
+## 关键假设
+
+- **邮件服务可用：** 阶段一中的邮件验证码和密码重置依赖外部邮件服务（SendGrid/AWS SES/阿里云邮件推送），需提前申请并配置 SMTP 凭证
+- **高德 API Key 有效：** POI 采集依赖高德 Web 服务 API，需确保 Key 有足够的 QPS 配额
+- **OSRM 路网数据自愿部署：** 路网服务为可选增强，v1.0 无 OSRM 时所有路网计算降级为直线距离，不影响核心功能
+- **HTTPS 证书由运维侧处理：** certbot 自动续签脚本不纳入代码仓库，由部署人员按文档手动配置
+- **监控面板暂不实施：** Prometheus + Grafana 留到 v1.1，v1.0 仅依赖健康检查端点 + Docker 日志
