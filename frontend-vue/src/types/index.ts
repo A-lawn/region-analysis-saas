@@ -83,6 +83,7 @@ export interface SiteCandidate {
   lat: number
   score: number
   dimensions: Record<string, number>
+  advice?: { message: string; priority: 'high' | 'medium' | 'low' }[]
 }
 
 export interface SiteOptimizationResult {

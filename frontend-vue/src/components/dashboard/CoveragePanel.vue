@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="panel">
     <h4 class="panel-title">覆盖范围分析</h4>
     <AnalysisParams
@@ -17,7 +17,7 @@
     <div v-if="result" class="result-section">
       <template v-if="Array.isArray(result)">
         <div v-for="(r, i) in result" :key="i" class="result-stat">
-          <span class="stat-label">{{ [2000, 3000, 5000][i] || r.radius }}m</span>
+          <span class="stat-label">{{ [2000, 3000, 5000][i] }}m</span>
           <span class="stat-value">{{ r.coverageRatio }}% ({{ ((r.coveredArea || 0) / 1000000).toFixed(2) }} km²)</span>
         </div>
       </template>

@@ -10,7 +10,7 @@ export const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "\u8bf7\u6c42\u8fc7\u4e8e\u9891\u7e41\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5",
+    error: "请求过于频繁，请稍后再试",
     code: "RATE_LIMIT",
   },
   validate: { ip: false },
@@ -22,7 +22,7 @@ export const registerLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "\u6ce8\u518c\u8bf7\u6c42\u8fc7\u4e8e\u9891\u7e41\uff0c\u8bf7 1 \u5206\u949f\u540e\u518d\u8bd5",
+    error: "注册请求过于频繁，请1分钟后再试",
     code: "REGISTER_RATE_LIMIT",
   },
   validate: { ip: false },
@@ -34,7 +34,7 @@ export const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "\u767b\u5f55\u5c1d\u8bd5\u8fc7\u4e8e\u9891\u7e41\uff0c\u8bf7 1 \u5206\u949f\u540e\u518d\u8bd5",
+    error: "登录尝试过于频繁，请1分钟后再试",
     code: "LOGIN_RATE_LIMIT",
   },
   keyGenerator: (req: any) => {
@@ -50,7 +50,7 @@ export const analysisLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "\u5206\u6790\u8bf7\u6c42\u8fc7\u4e8e\u9891\u7e41\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5",
+    error: "分析请求过于频繁，请稍后再试",
     code: "ANALYSIS_RATE_LIMIT",
   },
   keyGenerator: (req: any) => {
