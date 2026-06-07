@@ -1,13 +1,15 @@
 {
     "name": "region-analysis-saas",
     "version": "1.0.0",
-    "description": "区域数据分析SaaS �?极简空间分析平台",
+    "description": "区域数据分析SaaS - 极简空间分析平台",
     "main": "dist/index.js",
     "scripts": {
         "dev": "ts-node src/index.ts",
         "build": "tsc",
         "start": "node dist/index.js",
-        "test": "jest --forceExit --detectOpenHandles"
+        "test": "jest --forceExit --detectOpenHandles",
+        "build:utf8": "chcp 65001 > nul && tsc",
+        "check:encoding": "python ../scripts/check_encoding.py && python ../scripts/check_js_encoding.py"
     },
     "dependencies": {
         "@types/bcryptjs": "^2.4.6",

@@ -176,7 +176,7 @@ router.post("/apikeys", authRequired, async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
     if (!name) {
-      return res.status(400).json({ error: "??????" });
+      return res.status(400).json({ error: "名称不能为空" });
     }
 
     const apiKey = "ak_" + crypto.randomBytes(16).toString("hex");
