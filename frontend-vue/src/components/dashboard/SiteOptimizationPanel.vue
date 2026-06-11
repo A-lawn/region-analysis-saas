@@ -13,17 +13,17 @@
     </div>
     <div class="param-group">
       <label>距离权重</label>
-      <input type="range" min="0" max="1" step="0.05" v-model.number="weights.distanceWeight" />
+      <input type="range" min="0" max="1" step="0.05" v-model.number="weights.distanceWeight" class="range-input" />
       <span class="param-hint">{{ weights.distanceWeight.toFixed(2) }}</span>
     </div>
     <div class="param-group">
       <label>盲区权重</label>
-      <input type="range" min="0" max="1" step="0.05" v-model.number="weights.blindSpotWeight" />
+      <input type="range" min="0" max="1" step="0.05" v-model.number="weights.blindSpotWeight" class="range-input" />
       <span class="param-hint">{{ weights.blindSpotWeight.toFixed(2) }}</span>
     </div>
     <div class="param-group">
       <label>密度权重</label>
-      <input type="range" min="0" max="1" step="0.05" v-model.number="weights.densityWeight" />
+      <input type="range" min="0" max="1" step="0.05" v-model.number="weights.densityWeight" class="range-input" />
       <span class="param-hint">{{ weights.densityWeight.toFixed(2) }}</span>
     </div>
 
@@ -31,7 +31,7 @@
       <label>候选位置 (name,lng,lat 每行一个)</label>
       <div class="map-hint">提示：在选址模式下，直接点击地图即可自动添加候选坐标</div>
       <textarea v-model="candidatesText" rows="4" placeholder="A,116.40,39.91&#10;B,116.42,39.92"></textarea>
-      <button type="button" class="btn btn-sm btn-clear" @click="clearCandidates">清除所有候选</button>
+      <button type="button" class="btn btn-sm" style="margin-top: var(--space-1); color: var(--color-error)" @click="clearCandidates">清除所有候选</button>
     </div>
 
     <button class="btn btn-primary btn-block" @click="runAnalysis">评估选址</button>
@@ -58,7 +58,7 @@
             <span class="dim-item" :class="scoreClass(c.dimensions.densityScore)">密度 {{ c.dimensions.densityScore }}</span>
           </div>
           <div class="site-summary">
-            距最近点 {{ c.dimensions.avgDistanceMeters }}m，周边 {{ c.dimensions.nearbyPoints }} 个点
+            最近点距离 {{ c.dimensions.minDistanceMeters }}m，周边 {{ c.dimensions.nearbyPoints }} 个点
             <span v-if="c.dimensions.competitors500m > 0">
               ，竞争者 {{ c.dimensions.competitors500m }} 家(500m内)
             </span>
@@ -146,39 +146,217 @@ async function runAnalysis() {
 </script>
 
 <style scoped>
-.panel { padding: 16px; }
-.panel-title { margin: 0 0 12px; font-size: 15px; color: #333; }
-.param-group { margin-bottom: 10px; }
-.param-group label { display: block; font-size: 13px; font-weight: 500; color: #555; margin-bottom: 4px; }
-.param-group input[type='range'] { width: 100%; }
-.param-group textarea { width: 100%; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; resize: vertical; }
-.param-hint { font-size: 12px; color: #999; }
-.btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
-.btn-primary { background: #1677ff; color: #fff; }
-.btn-block { width: 100%; }
-.result-section { margin-top: 12px; }
-.site-row { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; gap: 12px; }
-.site-row.top { background: #f6ffed; }
-.site-rank { width: 24px; height: 24px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
-.site-row.top .site-rank { background: #52c41a; color: #fff; }
-.site-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.site-header-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-.site-name { font-size: 14px; }
-.site-score { font-weight: 700; color: #1677ff; font-size: 15px; }
-.site-dims { display: flex; gap: 8px; font-size: 11px; flex-wrap: wrap; }
-.dim-item { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
-.dim-item.score-high { background: #f6ffed; color: #389e0d; }
-.dim-item.score-mid { background: #fffbe6; color: #ad8b00; }
-.dim-item.score-low { background: #fff2f0; color: #ff4d4f; }
-.site-summary { font-size: 11px; color: #888; }
-.site-advice { font-size: 11px; display: flex; gap: 4px; flex-wrap: wrap; }
-.advice-tag { padding: 2px 6px; border-radius: 3px; background: #f0f0f0; color: #555; }
-.advice-tag.high { background: #fff2f0; color: #cf1322; }
-.advice-tag.medium { background: #fffbe6; color: #ad8b00; }
-.advice-tag.low { background: #f6ffed; color: #389e0d; }
-.map-hint { background: #e6f4ff; border: 1px solid #91caff; border-radius: 4px; padding: 6px 10px; font-size: 12px; color: #0958d9; margin-bottom: 6px; }
-.industry-select { width: 100%; padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-clear { margin-top: 6px; background: #fff; border: 1px solid #d9d9d9; border-radius: 4px; cursor: pointer; color: #999; }
-.btn-clear:hover { border-color: #ff4d4f; color: #ff4d4f; }
+.panel {
+  padding: 0;
+}
+
+.panel-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.param-group {
+  margin-bottom: var(--space-2);
+}
+
+.param-group label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.param-group input[type='range'] {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  outline: none;
+}
+
+.param-group input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+.param-group textarea {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  resize: vertical;
+  background: var(--color-bg-card-solid);
+  color: var(--color-text-primary);
+}
+
+.param-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.btn-block {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.result-section {
+  margin-top: var(--space-3);
+}
+
+.site-row {
+  display: flex;
+  align-items: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-3);
+}
+
+.site-row.top {
+  background: var(--color-success-bg);
+  border-radius: var(--radius-sm);
+}
+
+.site-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-bg-input);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  flex-shrink: 0;
+}
+
+.site-row.top .site-rank {
+  background: var(--color-success);
+  color: #fff;
+}
+
+.site-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.site-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.site-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.site-score {
+  font-weight: var(--font-bold);
+  color: var(--color-accent);
+  font-size: var(--text-base);
+}
+
+.site-dims {
+  display: flex;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  flex-wrap: wrap;
+}
+
+.dim-item {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.dim-item.score-high {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.dim-item.score-mid {
+  background: var(--color-warning-bg);
+  color: var(--color-text-primary);
+}
+
+.dim-item.score-low {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.site-summary {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.site-advice {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.advice-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: var(--text-xs);
+  background: var(--color-bg-input);
+  color: var(--color-text-secondary);
+}
+
+.advice-tag.high {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.advice-tag.medium {
+  background: var(--color-warning-bg);
+  color: var(--color-text-primary);
+}
+
+.advice-tag.low {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.map-hint {
+  background: var(--color-accent-subtle);
+  border: 1px solid var(--color-border-focus);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-accent);
+  margin-bottom: var(--space-1);
+}
+
+.industry-select {
+  width: 100%;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-family: var(--font-system);
+  background: var(--color-bg-card-solid);
+  color: var(--color-text-primary);
+}
 </style>
+

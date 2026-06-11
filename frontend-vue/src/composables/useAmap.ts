@@ -2,7 +2,6 @@
 
 const MAP_KEY = import.meta.env.VITE_AMAP_WEB_KEY || ''
 const MAP_SECRET = import.meta.env.VITE_AMAP_SECRET || ''
-
 ;(window as any)._AMapSecurityConfig = { securityJsCode: MAP_SECRET }
 
 const amapInstance = ref<any>(null)
@@ -129,14 +128,14 @@ export function useAmap() {
 
   function addGeoJSONPolygons(geojson: any, fillColor: string, strokeColor: string, fillOpacity = 0.3): number {
     const map = amapInstance.value
-    if (!map || !geojson || !geojson.coordinates) return 0
+    if (!map || !geojson || !geojson.coordinates || !geojson.coordinates.length) return 0
 
     // Flatten MultiPolygon/Polygon geometry into simple polygon paths
     const polygons: [number, number][][] = []
     
     function extractPolygons(coords: any) {
       if (!coords) return
-      if (typeof coords[0][0] === 'number') {
+      if (coords.length && typeof coords[0][0] === 'number') {
         // Simple polygon: coords is [[lng,lat],...]
         polygons.push(coords.map((p: number[]) => [p[0], p[1]] as [number, number]))
       } else if (Array.isArray(coords[0][0])) {
@@ -219,3 +218,4 @@ export function useAmap() {
     addClusterLayer, addMarkers, addHeatmapLayer, addGeoJSONPolygons, addCircles, addPolygons,
   }
 }
+

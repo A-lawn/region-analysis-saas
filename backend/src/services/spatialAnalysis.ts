@@ -1,4 +1,4 @@
-import db from "../db";
+﻿import db from "../db";
 import { config } from "../config";
 import { cacheGet, cacheSet } from "./cacheService";
 import crypto from "crypto";
@@ -73,27 +73,34 @@ export async function computeCoverage(projectId: string, radiusMeters: number): 
     const hullArea = parseFloat(result.hull_area || "1");
     const uncoveredArea = Math.max(0, hullArea - coveredArea);
 
-    // Convert GeoJSON coordinates from WGS84 to GCJ-02 for AMap display
+    // Read project source_crs for coordinate output conversion
+    const projectRow2 = await db.oneOrNone(
+      "SELECT source_crs FROM analysis_projects WHERE id = $[pid]",
+      { pid: projectId }
+    );
+    const projectCrs2 = (projectRow2?.source_crs || "gcj02") as string;
+
+    // Convert GeoJSON coordinates from WGS-84 to project CRS for frontend (AMap)
     const { convertCoord } = require('../utils/coordTransform');
     function convertGeoJSONCoords(geom: any): any {
       if (!geom) return null;
       if (geom.type === 'Point') {
-        const gcj = convertCoord(geom.coordinates[0], geom.coordinates[1], 'wgs84', 'gcj02');
-        return { ...geom, coordinates: [gcj.lng, gcj.lat] };
+        const crs = convertCoord(geom.coordinates[0], geom.coordinates[1], 'wgs84', projectCrs2);
+        return { ...geom, coordinates: [crs.lng, crs.lat] };
       }
-      if (geom.type === 'Polygon') {
+      if (geom.type === 'Polygon' && geom.coordinates?.length) {
         return { ...geom, coordinates: geom.coordinates.map((ring: number[][]) =>
           ring.map((c: number[]) => {
-            try { const gcj = convertCoord(c[0], c[1], 'wgs84', 'gcj02'); return [gcj.lng, gcj.lat]; }
+            try { const crs = convertCoord(c[0], c[1], 'wgs84', projectCrs2); return [crs.lng, crs.lat]; }
             catch { return c; }
           })
         )};
       }
-      if (geom.type === 'MultiPolygon') {
+      if (geom.type === 'MultiPolygon' && geom.coordinates?.length) {
         return { ...geom, coordinates: geom.coordinates.map((poly: number[][][]) =>
           poly.map((ring: number[][]) =>
             ring.map((c: number[]) => {
-              try { const gcj = convertCoord(c[0], c[1], 'wgs84', 'gcj02'); return [gcj.lng, gcj.lat]; }
+              try { const crs = convertCoord(c[0], c[1], 'wgs84', projectCrs2); return [crs.lng, crs.lat]; }
               catch { return c; }
             })
           )
@@ -255,23 +262,43 @@ export async function computeSiteOptimization(
     const densW = w.densityWeight ?? w.poiDensity ?? w.deliveryCoverage ?? w.transportConvenience ?? 0.25;
 
     // Run competition analysis for all candidates
+    // Read project source_crs to correctly convert candidate coordinates
+    const projectRow = await db.oneOrNone(
+      "SELECT source_crs FROM analysis_projects WHERE id = $[pid]",
+      { pid: projectId }
+    );
+    const projectCrs = (projectRow?.source_crs || "gcj02") as string;
+
     const compResults = await batchCompetitionAnalysis(projectId, candidates);
 
     const scored = [];
+    const { convertCoord } = require('../utils/coordTransform');
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i];
+      // Convert candidate from project CRS to WGS-84 for DB comparison
+      let wgsLng = c.lng, wgsLat = c.lat;
+      try {
+        const wgs = convertCoord(c.lng, c.lat, projectCrs, 'wgs84');
+        wgsLng = wgs.lng;
+        wgsLat = wgs.lat;
+      } catch {
+        // If conversion fails, use as-is and log warning
+        console.warn("[SiteOpt] CRS conversion failed for candidate:", c.name);
+      }
       const comp = compResults[i] || { saturation: 'medium' as const, competitorCount500m: 0, competitorCount1000m: 0, gapRatio: 1 };
-      const compScore = comp.saturation === 'low' ? 1.0 : comp.saturation === 'medium' ? 0.5 : 0.1;
+      // Competition: penalize if competitors within 500m; 0 competitors=100, 5+=0
+      const comp_500m = comp.competitorCount500m || 0;
+      const compScore = Math.max(0, 1 - comp_500m / 5);
       const advice = generateAdvice({});
       const dr = await db.one(
-        "SELECT AVG(ST_Distance(ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, geom::geography)) AS avg_dist, COUNT(*)::INTEGER AS point_count FROM spatial_points WHERE project_id = $3",
-        [c.lng, c.lat, projectId]
+        "SELECT MIN(ST_Distance(ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, geom::geography)) AS min_dist, COUNT(*)::INTEGER AS point_count FROM spatial_points WHERE project_id = $3",
+        [wgsLng, wgsLat, projectId]
       );
-      const avgDist = parseFloat(dr.avg_dist || "0");
-      const distScore = 1 - Math.min(avgDist / 10000, 1.0);
-      const blindScore = 1 - Math.min(avgDist / 3000, 1.0);
+      const minDist = parseFloat(dr.min_dist || "0");
+      const distScore = Math.min(minDist / 500, 1.0); // normalized: 0m=0, 500m+=100 (beyond 500m no conflict)
+      const blindScore = Math.min(minDist / 3000, 1.0); // further from existing = more blindspot coverage value
       const nearbyCount = parseInt(dr.point_count || "0");
-      const densScore = nearbyCount > 0 ? Math.max(0, 1 - nearbyCount / 50) : 1.0;
+      const densScore = Math.min(nearbyCount / 50, 1.0); // more nearby points = higher commercial density
       const total = distScore * distW + blindScore * blindW + compScore * compW + densScore * densW;
       scored.push({ name: c.name, lng: c.lng, lat: c.lat,
         score: Math.round(total * 100),
@@ -280,7 +307,7 @@ export async function computeSiteOptimization(
           blindSpotScore: Math.round(blindScore * 100),
           competitionScore: Math.round(compScore * 100),
           densityScore: Math.round(densScore * 100),
-          avgDistanceMeters: Math.round(avgDist),
+          minDistanceMeters: Math.round(minDist),
           nearbyPoints: nearbyCount,
           competitors500m: comp.competitorCount500m,
           competitors1000m: comp.competitorCount1000m,

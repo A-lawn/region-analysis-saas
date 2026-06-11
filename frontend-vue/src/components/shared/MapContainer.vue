@@ -1,6 +1,7 @@
 ﻿<template>
   <div class="map-wrapper">
     <div v-if="error" class="map-error">
+      <AppIcon name="alert" :size="28" color="var(--color-error)" />
       <h3>地图加载失败</h3>
       <p>{{ error }}</p>
     </div>
@@ -15,6 +16,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useAmap } from '@/composables/useAmap'
+import AppIcon from '@/components/shared/AppIcon.vue'
 
 const props = defineProps<{
   points: { lng: number; lat: number; name?: string }[]
@@ -65,7 +67,6 @@ function renderPoints() {
   if (!props.points.length) return
   fitBounds(props.points)
   clearOverlays()
-  // 2.5: Use clustering for >200 points, simple markers otherwise
   if (props.points.length > 200) {
     addClusterLayer(props.points)
   } else {
@@ -73,7 +74,6 @@ function renderPoints() {
   }
 }
 
-// Watch points changes
 watch(
   () => props.points,
   () => {
@@ -81,7 +81,6 @@ watch(
   }
 )
 
-// Watch clickEnabled to dynamically toggle map click
 watch(
   () => props.clickEnabled,
   (enabled) => {
@@ -98,19 +97,32 @@ watch(
   width: 100%;
   height: 100%;
 }
+
 .map-container {
   width: 100%;
   height: 100%;
 }
+
 .map-error {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: #fff5f5;
-  color: #ff4d4f;
+  gap: var(--space-2);
+  background: var(--color-error-bg);
+  color: var(--color-error);
 }
+
+.map-error h3 {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+}
+
+.map-error p {
+  font-size: var(--text-sm);
+}
+
 .map-loading {
   position: absolute;
   inset: 0;
@@ -118,26 +130,18 @@ watch(
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.7);
+  gap: var(--space-2);
+  background: rgba(242, 242, 247, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 10;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
 }
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #e8e8e8;
-  border-top-color: #1677ff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-bottom: 8px;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-</style>
+
 @media (max-width: 768px) {
   .map-container {
     min-height: 300px;
   }
 }
+</style>

@@ -7,6 +7,11 @@
         class="toast-item"
         :class="toast.type"
       >
+        <span class="toast-icon">
+          <AppIcon v-if="toast.type === 'success'" name="check" :size="16" />
+          <AppIcon v-else-if="toast.type === 'error'" name="alert" :size="16" />
+          <AppIcon v-else name="info" :size="16" />
+        </span>
         {{ toast.message }}
       </div>
     </transition-group>
@@ -15,6 +20,7 @@
 
 <script setup lang="ts">
 import { useToast } from '@/composables/useToast'
+import AppIcon from '@/components/shared/AppIcon.vue'
 
 const { toasts } = useToast()
 </script>
@@ -22,45 +28,68 @@ const { toasts } = useToast()
 <style scoped>
 .toast-container {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  top: calc(var(--nav-height) + var(--space-3));
+  right: var(--space-5);
   z-index: 9999;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
+  pointer-events: none;
 }
+
 .toast-item {
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  box-shadow: var(--shadow-elevated);
+  backdrop-filter: var(--glass-blur-light);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  min-width: 240px;
+  pointer-events: auto;
 }
+
+.toast-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+
 .toast-item.success {
-  background: #f6ffed;
-  color: #52c41a;
-  border: 1px solid #b7eb8f;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid rgba(52, 199, 89, 0.12);
 }
+
 .toast-item.error {
-  background: #fff2f0;
-  color: #ff4d4f;
-  border: 1px solid #ffccc7;
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid rgba(255, 59, 48, 0.12);
 }
+
 .toast-item.info {
-  background: #e6f7ff;
-  color: #1677ff;
-  border: 1px solid #91d5ff;
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border: 1px solid rgba(0, 122, 255, 0.12);
 }
-.toast-enter-active,
+
+.toast-enter-active {
+  transition: all var(--duration-normal) var(--ease-spring);
+}
+
 .toast-leave-active {
-  transition: all 0.3s ease;
+  transition: all var(--duration-fast) var(--ease-smooth);
 }
+
 .toast-enter-from {
   opacity: 0;
-  transform: translateX(40px);
+  transform: translateY(-12px) scale(0.96);
 }
+
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(40px);
+  transform: translateX(20px);
 }
 </style>

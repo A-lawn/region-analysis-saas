@@ -41,32 +41,39 @@ const options = [
 <style scoped>
 .crs-selector {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
+
 .crs-option {
   cursor: pointer;
-  border: 2px solid #e8e8e8;
-  border-radius: 8px;
-  padding: 12px 16px;
-  transition: border-color 0.2s;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  transition:
+    border-color var(--duration-normal) var(--ease-smooth),
+    background var(--duration-normal) var(--ease-smooth);
   flex: 1;
   min-width: 140px;
 }
+
 .crs-option input {
   display: none;
 }
+
 .crs-option.active {
-  border-color: #1677ff;
-  background: #f0f5ff;
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
 }
+
 .crs-card strong {
   display: block;
-  font-size: 16px;
-  margin-bottom: 4px;
+  font-size: var(--text-base);
+  margin-bottom: var(--space-1);
 }
+
 .crs-card small {
-  color: #999;
-  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
 }
 </style>

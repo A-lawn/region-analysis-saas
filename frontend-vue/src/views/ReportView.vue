@@ -1,9 +1,13 @@
-<template>
+﻿<template>
   <div class="report-view">
     <div class="report-header no-print">
-      <button class="btn btn-back" @click="router.push({ name: 'dashboard', params: { id: projectId } })">返回</button>
+      <button class="btn-back" @click="router.push({ name: 'dashboard', params: { id: projectId } })">
+        <AppIcon name="chevron-left" :size="16" />返回
+      </button>
       <h2>分析报告</h2>
-      <button class="btn btn-primary" @click="doPrint">打印 / 导出 PDF</button>
+      <button class="btn btn-primary btn-sm" @click="doPrint">
+        <AppIcon name="printer" :size="14" />打印 / 导出 PDF
+      </button>
     </div>
 
     <div v-if="loading" class="loading">加载报告数据...</div>
@@ -58,7 +62,7 @@
         </div>
       </section>
 
-            <section v-if="h3Data?.hexagons?.length" class="report-section">
+      <section v-if="h3Data?.hexagons?.length" class="report-section">
         <h3>5. 等值区域分析</h3>
         <p>分辨率: {{ h3Data.resolution }}, 六边形数: {{ h3Data.hexagons.length }}</p>
         <table class="info-table">
@@ -70,8 +74,10 @@
           </tbody>
         </table>
         <p v-if="h3Data.hexagons.length > 20">... 仅显示前20个六边形</p>
-      </section>\n<section v-if="siteData?.candidates?.length" class="report-section">
-        <h3>5. 选址优化</h3>
+      </section>
+
+      <section v-if="siteData?.candidates?.length" class="report-section">
+        <h3>6. 选址优化</h3>
         <table class="info-table">
           <thead><tr><th>排名</th><th>名称</th><th>得分</th></tr></thead>
           <tbody>
@@ -88,6 +94,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppIcon from '@/components/shared/AppIcon.vue'
 import axios from 'axios'
 
 const route = useRoute()
@@ -127,19 +134,111 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.report-view { max-width: 860px; margin: 0 auto; padding: 40px 20px; }
-.report-header { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
-.report-header h2 { flex: 1; margin: 0; }
-.btn { padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; cursor: pointer; background: #fff; }
-.btn-primary { background: #1677ff; color: #fff; border-color: #1677ff; }
-.btn-back { background: none; border: none; color: #1677ff; cursor: pointer; padding: 0; }
-.loading, .error { text-align: center; padding: 40px; color: #999; }
-.error-msg { color: #ff4d4f; padding: 8px; background: #fff2f0; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
-.report-section { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
-.report-section h3 { margin: 0 0 16px; font-size: 16px; border-bottom: 1px solid #f0f0f0; padding-bottom: 8px; }
-.info-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.info-table td, .info-table th { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; text-align: left; }
-.info-table td:first-child, .info-table th:first-child { color: #666; width: 140px; }
-.report-section p { font-size: 13px; color: #333; margin: 4px 0; }
-@media print { .no-print { display: none; } .report-view { padding: 0; max-width: 100%; } }
+.report-view {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--space-10) var(--space-5);
+}
+
+.report-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.report-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  letter-spacing: -0.02em;
+}
+
+.loading,
+.error {
+  text-align: center;
+  padding: var(--space-10);
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.report-section {
+  background: var(--color-bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.report-section h3 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+/* ── Tables ── */
+.info-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+}
+
+.info-table td,
+.info-table th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.info-table th {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.info-table td:first-child,
+.info-table th:first-child {
+  color: var(--color-text-secondary);
+  width: 120px;
+}
+
+.report-section p {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin: var(--space-1) 0;
+}
+
+.report-section code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+@media print {
+  .no-print { display: none; }
+  .report-view { padding: 0; max-width: 100%; }
+  .report-section {
+    box-shadow: none;
+    border: 1px solid #ddd;
+    background: #fff;
+    backdrop-filter: none;
+  }
+}
 </style>
+

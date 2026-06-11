@@ -1,5 +1,5 @@
 ﻿import db from "../db";
-import { convertPointsToGcj02, CrsType } from "../utils/coordTransform";
+import { CrsType, convertCoord as convertCoordLib } from "../utils/coordTransform";
 import pgPromise from "pg-promise";
 import { pointToH3 } from "../utils/h3Index";
 
@@ -35,9 +35,12 @@ export async function processUpload(
     return { projectId: "", rowsParsed: rows.length, rowsInserted: 0, errors: ["No valid coordinates found"] };
   }
 
+  // Convert source CRS -> WGS-84 for storage
   let convertedPoints: { lng: number; lat: number }[];
   try {
-    convertedPoints = convertPointsToGcj02(points.map(p => ({ lng: p.lng, lat: p.lat })), sourceCrs);
+    convertedPoints = points.map(p => {
+      return convertCoordLib(p.lng, p.lat, sourceCrs, "wgs84");
+    });
   } catch (err: any) {
     return { projectId: "", rowsParsed: rows.length, rowsInserted: 0, errors: ["CRS conversion failed: " + err.message] };
   }
@@ -54,20 +57,14 @@ export async function processUpload(
     { table: "spatial_points" }
   );
 
-  // Convert GCJ-02 coordinates back to WGS-84 for proper geometry storage
-  // PostGIS geography calculations (ST_Buffer, ST_Distance) require WGS-84
-  const { convertCoord } = require('../utils/coordTransform');
-  const wgsPoints = convertedPoints.map(p => {
-    try { return convertCoord(p.lng, p.lat, 'gcj02', 'wgs84'); }
-    catch { return p; }
-  });
+  // Points are already in WGS-84 from step above, no further conversion needed
 
   let inserted = 0;
   let batch: any[] = [];
 
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
-    const c = wgsPoints[i];
+    const c = convertedPoints[i];
     if (isNaN(c.lng) || isNaN(c.lat) || !isFinite(c.lng) || !isFinite(c.lat)) continue;
     batch.push({
       project_id: project.id,
@@ -152,10 +149,43 @@ export async function getProjectSummary(projectId: string) {
   };
 }
 
-export async function listProjects(tenantId: string = "default") {
-  return db.manyOrNone(
-    "SELECT id, name, source_crs, point_count, status, created_at FROM analysis_projects WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 50",
-    [tenantId]
+export async function listProjects(
+  tenantId: string = "default",
+  opts?: { search?: string; page?: number; limit?: number }
+) {
+  const search = opts?.search?.trim() || "";
+  const limit = Math.min(opts?.limit || 20, 50);
+  const page = Math.max(opts?.page || 1, 1);
+  const offset = (page - 1) * limit;
+
+  let whereClause = "WHERE tenant_id = $[tenantId]";
+  const params: any = { tenantId, limit, offset };
+
+  if (search) {
+    whereClause += " AND name ILIKE $[search]";
+    params.search = "%" + search + "%";
+  }
+
+  const countResult = await db.one(
+    "SELECT COUNT(*) as total FROM analysis_projects " + whereClause,
+    params
   );
+  const total = parseInt(countResult.total);
+
+  const rows = await db.manyOrNone(
+    "SELECT id, name, source_crs, point_count, status, created_at FROM analysis_projects " +
+      whereClause +
+      " ORDER BY created_at DESC LIMIT $[limit] OFFSET $[offset]",
+    params
+  );
+
+  return {
+    projects: rows,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 }
+
 

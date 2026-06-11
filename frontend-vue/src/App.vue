@@ -1,15 +1,21 @@
-<template>
+﻿<template>
   <div id="app-root">
     <nav id="top-nav" v-if="!isReportPage">
       <div class="nav-brand" @click="router.push({ name: 'upload' })">
-        <span class="logo-icon">📊</span>
+        <span class="logo-icon">
+          <AppIcon name="chart" :size="22" />
+        </span>
         <span class="logo-text">区域数据分析平台</span>
       </div>
       <div class="nav-actions">
         <template v-if="authStore.isLoggedIn">
           <span class="nav-user">{{ authStore.user?.email }}</span>
-          <button class="btn btn-sm" @click="router.push({ name: 'upload' })">新建项目</button>
-          <button class="btn btn-sm btn-outline" @click="handleLogout">登出</button>
+          <button class="btn btn-sm" @click="router.push({ name: 'upload' })">
+            <AppIcon name="plus" :size="14" />新建项目
+          </button>
+          <button class="btn btn-sm btn-outline" @click="handleLogout">
+            <AppIcon name="logout" :size="14" />登出
+          </button>
         </template>
         <button v-else class="btn btn-sm btn-primary" @click="router.push({ name: 'login' })">登录</button>
       </div>
@@ -26,6 +32,7 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import ToastContainer from '@/components/shared/ToastContainer.vue'
+import AppIcon from '@/components/shared/AppIcon.vue'
 
 const router = useRouter()
 const route = useRoute()

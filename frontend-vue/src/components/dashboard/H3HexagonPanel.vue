@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="h3-hex-panel">
     <div class="param-row">
       <label>分辨率 (0-15)</label>
@@ -56,49 +56,49 @@ async function load() {
 
 <style scoped>
 .h3-hex-panel {
-  padding: 12px;
+  padding: 0;
 }
+
 .param-row {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
+
 .param-row label {
   display: block;
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 4px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
 }
+
 .param-row select {
   width: 100%;
-  padding: 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  font-size: 14px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-family: var(--font-system);
+  background: var(--color-bg-card-solid);
+  color: var(--color-text-primary);
 }
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.btn-primary {
-  background: #1677ff;
-  color: #fff;
-}
-.btn-primary:disabled {
-  opacity: 0.6;
-}
+
 .btn-block {
   width: 100%;
 }
+
 .error-msg {
-  color: #ff4d4f;
-  font-size: 13px;
-  margin-top: 8px;
+  color: var(--color-error);
+  font-size: var(--text-sm);
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-error-bg);
+  border-radius: var(--radius-sm);
 }
+
 .result-info {
-  margin-top: 8px;
-  font-size: 13px;
-  color: #666;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 </style>

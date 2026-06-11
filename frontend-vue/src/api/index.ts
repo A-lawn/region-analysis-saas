@@ -27,8 +27,8 @@ export async function confirmUpload(payload: { uploadId: string; columnMapping: 
   return data
 }
 
-export async function listProjects(): Promise<{ projects: any[] }> {
-  const { data } = await apiClient.get('/projects')
+export async function listProjects(opts?: { search?: string; page?: number; limit?: number }): Promise<{ projects: any[]; total: number; page: number; limit: number; totalPages: number }> {
+  const { data } = await apiClient.get('/projects', { params: opts })
   return data
 }
 

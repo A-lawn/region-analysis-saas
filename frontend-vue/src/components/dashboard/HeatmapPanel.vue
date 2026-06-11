@@ -60,27 +60,37 @@ async function runAnalysis() {
 
 <style scoped>
 .panel {
-  padding: 16px;
+  padding: 0;
 }
+
 .panel-title {
-  margin: 0 0 12px;
-  font-size: 15px;
-  color: #333;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
+
 .result-section {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
+
 .result-stat {
   display: flex;
   justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
 }
+
 .stat-label {
-  color: #666;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
 }
+
 .stat-value {
-  font-weight: 600;
-  color: #1677ff;
+  font-weight: var(--font-semibold);
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
 }
 </style>

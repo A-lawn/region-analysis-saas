@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="panel">
     <h4 class="panel-title">覆盖范围分析</h4>
     <AnalysisParams
@@ -7,7 +7,7 @@
       @update="onUpdate"
       @run="runAnalysis"
     />
-    <div class="param-group" style="margin-top:8px">
+    <div class="param-group" style="margin-top: var(--space-2)">
       <label class="checkbox-label">
         <input type="checkbox" v-model="multiRadius" />
         多半径对比 (2km / 3km / 5km)
@@ -87,36 +87,64 @@ async function runAnalysis() {
 
 <style scoped>
 .panel {
-  padding: 16px;
+  padding: 0;
 }
+
 .panel-title {
-  margin: 0 0 12px;
-  font-size: 15px;
-  color: #333;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
+
+.param-group {
+  margin-bottom: var(--space-2);
+}
+
+.param-group label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
 .result-section {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
+
 .result-stat {
   display: flex;
   justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
 }
+
 .stat-label {
-  color: #666;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
 }
+
 .stat-value {
-  font-weight: 600;
-  color: #1677ff;
+  font-weight: var(--font-semibold);
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
 }
+
 .map-hint {
-  margin-top: 12px;
-  padding: 8px 10px;
-  background: #fffbe6;
-  border: 1px solid #ffe58f;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #ad6800;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(255, 149, 0, 0.12);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
 }
 </style>

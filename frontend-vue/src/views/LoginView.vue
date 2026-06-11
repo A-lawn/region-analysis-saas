@@ -1,9 +1,11 @@
 ﻿<template>
   <div class="login-view">
+    <div class="login-bg-glow"></div>
     <div class="login-card">
       <h2>区域数据分析平台</h2>
+      <p class="login-subtitle">空间智能分析工具</p>
 
-      <!-- Tab: login / register -->
+      <!-- Tab: login / register as pill group -->
       <div v-if="!showVerify && !showForgot" class="tabs">
         <button :class="{ active: mode === 'login' }" @click="switchMode('login')">登录</button>
         <button :class="{ active: mode === 'register' }" @click="switchMode('register')">注册</button>
@@ -29,7 +31,7 @@
         </div>
         <div v-if="error" class="error-msg">{{ error }}</div>
         <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
-        <button class="btn btn-primary btn-block" :disabled="submitting">
+        <button class="btn btn-primary btn-block login-submit" :disabled="submitting">
           {{ submitting ? '处理中...' : mode === 'login' ? '登录' : '注册' }}
         </button>
         <p v-if="mode === 'login'" class="link-text">
@@ -39,7 +41,9 @@
 
       <!-- OTP verification screen -->
       <div v-if="showVerify" class="verify-section">
-        <div class="verify-icon">📧</div>
+        <div class="verify-icon">
+          <AppIcon name="mail" :size="40" />
+        </div>
         <h3>验证邮箱</h3>
         <p>验证码已发送至 <strong>{{ email }}</strong>，请查收邮件并输入6位验证码。</p>
         <form @submit.prevent="verifyEmail">
@@ -48,7 +52,7 @@
             <input v-model="otpCode" type="text" placeholder="6位数字验证码" maxlength="6" required autocomplete="one-time-code" />
           </div>
           <div v-if="error" class="error-msg">{{ error }}</div>
-          <button class="btn btn-primary btn-block" :disabled="verifying">
+          <button class="btn btn-primary btn-block login-submit" :disabled="verifying">
             {{ verifying ? '验证中...' : '确认验证' }}
           </button>
         </form>
@@ -71,7 +75,7 @@
           </div>
           <div v-if="error" class="error-msg">{{ error }}</div>
           <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
-          <button class="btn btn-primary btn-block" :disabled="submitting">
+          <button class="btn btn-primary btn-block login-submit" :disabled="submitting">
             {{ submitting ? '发送中...' : '发送重置邮件' }}
           </button>
         </form>
@@ -88,6 +92,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import AppIcon from '@/components/shared/AppIcon.vue'
 import axios from 'axios'
 
 const router = useRouter()
@@ -137,12 +142,13 @@ function openForgot() {
   successMsg.value = ''
 }
 
-onMounted(refreshCaptcha)
-
 async function submit() {
-  if (!captchaCode.value) { error.value = '请输入验证码'; return }
   error.value = ''
   successMsg.value = ''
+  if (!email.value || !password.value || !captchaCode.value) {
+    error.value = '请填写所有字段'
+    return
+  }
   submitting.value = true
   try {
     if (mode.value === 'register') {
@@ -230,6 +236,10 @@ async function submitForgot() {
     submitting.value = false
   }
 }
+
+onMounted(() => {
+  refreshCaptcha()
+})
 </script>
 
 <style scoped>
@@ -238,41 +248,164 @@ async function submitForgot() {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: var(--color-bg-primary);
+  position: relative;
+  overflow: hidden;
 }
+
+.login-bg-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 600px;
+  height: 600px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(0, 122, 255, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
 .login-card {
-  background: #fff;
-  padding: 40px;
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-  width: min(420px, 95vw);
-  max-width: 95vw;
+  position: relative;
+  background: var(--color-bg-card);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  padding: var(--space-10);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  width: min(420px, 90vw);
+  max-width: 90vw;
+  border: 1px solid var(--color-border);
 }
-.login-card h2 { text-align: center; margin: 0 0 24px; font-size: 22px; }
-.tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #f0f0f0; }
-.tabs button { flex: 1; padding: 10px; border: none; background: none; font-size: 15px; cursor: pointer; color: #999; }
-.tabs button.active { color: #1677ff; border-bottom: 2px solid #1677ff; margin-bottom: -2px; }
-.field { margin-bottom: 16px; }
-.field label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #333; }
-.field input { width: 100%; padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
-.captcha-field { margin-bottom: 16px; }
-.captcha-row { display: flex; gap: 10px; align-items: center; }
-.captcha-row input { flex: 1; min-width: 0; }
-.captcha-img { height: 42px; cursor: pointer; border: 1px solid #d9d9d9; border-radius: 8px; overflow: hidden; flex-shrink: 0; }
-.captcha-img:hover { border-color: #1677ff; }
-.captcha-img :deep(svg) { height: 40px; width: auto; }
-.error-msg { color: #ff4d4f; font-size: 13px; margin-bottom: 12px; padding: 8px 12px; background: #fff2f0; border-radius: 6px; border: 1px solid #ffccc7; }
-.success-msg { color: #389e0d; font-size: 13px; margin-bottom: 12px; padding: 8px 12px; background: #f6ffed; border-radius: 6px; border: 1px solid #b7eb8f; }
-.btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
-.btn-primary { background: #1677ff; color: #fff; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-block { width: 100%; }
-.link-text { text-align: center; margin-top: 14px; font-size: 13px; color: #999; }
-.link-text a { color: #1677ff; text-decoration: none; }
-.link-text a:hover { text-decoration: underline; }
-.verify-section, .forgot-section { text-align: center; }
-.verify-icon { font-size: 48px; margin-bottom: 8px; }
-.verify-section h3, .forgot-section h3 { margin: 0 0 12px; font-size: 18px; }
-.verify-section p, .forgot-section p { color: #666; font-size: 14px; margin-bottom: 20px; line-height: 1.6; }
-.verify-section form, .forgot-section form { text-align: left; }
+
+.login-card h2 {
+  text-align: center;
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  letter-spacing: -0.01em;
+}
+
+.login-subtitle {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-6);
+}
+
+.tabs {
+  display: flex;
+  margin-bottom: var(--space-5);
+  background: var(--color-bg-input);
+  border-radius: var(--radius-full);
+  padding: 3px;
+}
+
+.tabs button {
+  flex: 1;
+  padding: 8px var(--space-4);
+  border: none;
+  background: none;
+  font-size: var(--text-sm);
+  font-family: var(--font-system);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-full);
+  transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+.tabs button.active {
+  background: var(--color-bg-card-solid);
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.field label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  margin-bottom: var(--space-1);
+  color: var(--color-text-secondary);
+}
+
+.captcha-field {
+  margin-bottom: var(--space-4);
+}
+
+.captcha-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.captcha-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.captcha-img {
+  height: 42px;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: border-color var(--duration-fast) var(--ease-smooth);
+}
+
+.captcha-img:hover {
+  border-color: var(--color-accent);
+}
+
+.captcha-img :deep(svg) {
+  height: 40px;
+  width: auto;
+}
+
+.login-submit {
+  margin-top: var(--space-2);
+  padding: 12px;
+  font-size: var(--text-base);
+}
+
+.link-text {
+  text-align: center;
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.verify-section,
+.forgot-section {
+  text-align: center;
+}
+
+.verify-icon {
+  color: var(--color-accent);
+  margin-bottom: var(--space-2);
+}
+
+.verify-section h3,
+.forgot-section h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+.verify-section p,
+.forgot-section p {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-5);
+  line-height: var(--leading-relaxed);
+}
+
+.verify-section form,
+.forgot-section form {
+  text-align: left;
+}
 </style>

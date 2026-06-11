@@ -27,26 +27,34 @@ defineProps<{
   overflow-x: auto;
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
 }
+
 .preview-table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
 }
+
 .preview-table th,
 .preview-table td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .preview-table th {
-  background: #fafafa;
-  font-weight: 600;
+  background: var(--color-bg-input);
+  font-weight: var(--font-semibold);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
   position: sticky;
   top: 0;
 }

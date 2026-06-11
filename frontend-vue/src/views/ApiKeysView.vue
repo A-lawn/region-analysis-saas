@@ -1,7 +1,9 @@
 ﻿<template>
   <div class="apikeys-view">
     <div class="page-header">
-      <button class="btn-back" @click="router.push({ name: 'upload' })">← 返回</button>
+      <button class="btn-back" @click="router.push({ name: 'upload' })">
+        <AppIcon name="chevron-left" :size="16" />返回
+      </button>
       <h2>API Key 管理</h2>
     </div>
 
@@ -23,7 +25,10 @@
     <div class="section">
       <h3>已有 API Key</h3>
       <div v-if="loading" class="loading">加载中...</div>
-      <div v-else-if="!keys.length" class="empty">暂无 API Key</div>
+      <div v-else-if="!keys.length" class="empty-state">
+        <AppIcon name="key" :size="28" color="var(--color-text-tertiary)" />
+        <p>暂无 API Key</p>
+      </div>
       <table v-else class="keys-table">
         <thead>
           <tr>
@@ -41,7 +46,9 @@
             <td>{{ formatDate(k.created_at) }}</td>
             <td>{{ k.last_used_at ? formatDate(k.last_used_at) : '-' }}</td>
             <td>
-              <button class="btn btn-danger btn-sm" @click="deleteKey(k.id)">删除</button>
+              <button class="btn btn-sm" style="color: var(--color-error)" @click="deleteKey(k.id)">
+                <AppIcon name="trash" :size="12" />删除
+              </button>
             </td>
           </tr>
         </tbody>
@@ -54,6 +61,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import AppIcon from '@/components/shared/AppIcon.vue'
 import axios from 'axios'
 
 const router = useRouter()
@@ -114,117 +122,111 @@ onMounted(fetchKeys)
 .apikeys-view {
   max-width: 800px;
   margin: 0 auto;
-  padding: 40px 20px;
+  padding: var(--space-10) var(--space-5);
 }
+
 .page-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
+
 .page-header h2 {
   margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  letter-spacing: -0.02em;
 }
-.btn-back {
-  background: none;
-  border: none;
-  color: #1677ff;
-  font-size: 14px;
-  cursor: pointer;
-}
+
 .section {
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 16px;
+  background: var(--color-bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-card);
 }
+
 .section h3 {
-  margin: 0 0 16px;
-  font-size: 16px;
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
 }
+
 .create-form {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-end;
 }
+
 .field {
   flex: 1;
 }
+
 .field label {
   display: block;
-  font-size: 13px;
-  margin-bottom: 4px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  margin-bottom: var(--space-1);
+  color: var(--color-text-secondary);
 }
-.field input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  font-size: 14px;
-  box-sizing: border-box;
-}
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.btn-primary {
-  background: #1677ff;
-  color: #fff;
-}
-.btn-primary:disabled {
-  opacity: 0.6;
-}
-.btn-danger {
-  background: #ff4d4f;
-  color: #fff;
-}
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-.error-msg {
-  color: #ff4d4f;
-  font-size: 13px;
-  padding: 8px;
-  background: #fff2f0;
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-.loading, .empty {
-  color: #999;
+
+.loading {
+  color: var(--color-text-tertiary);
   text-align: center;
-  padding: 20px;
+  padding: var(--space-5);
 }
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--color-text-tertiary);
+}
+
+.empty-state p {
+  margin-top: var(--space-2);
+}
+
 .keys-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
 }
-.keys-table th, .keys-table td {
+
+.keys-table th,
+.keys-table td {
   text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 13px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
 }
+
 .keys-table th {
-  background: #fafafa;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
+
 .keys-table code {
-  background: #f5f5f5;
-  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  padding: 1px 6px;
   border-radius: 4px;
-  font-size: 12px;
 }
-</style>
+
 @media (max-width: 768px) {
   .apikeys-view {
-    padding: 20px 12px;
+    padding: var(--space-5) var(--space-3);
   }
   .create-form {
     flex-direction: column;
   }
 }
+</style>

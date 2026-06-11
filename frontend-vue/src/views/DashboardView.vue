@@ -1,54 +1,84 @@
 ﻿<template>
   <div class="dashboard-view">
-    <div v-if="loading" class="loading-overlay"><div class="spinner"></div><span>加载项目中...</span></div>
+    <div v-if="loading" class="loading-overlay">
+      <div class="spinner"></div>
+      <span>加载项目中...</span>
+    </div>
 
     <template v-else-if="summary">
       <div class="dashboard-header">
-        <button class="btn-back" @click="router.push({ name: 'upload' })">返回</button>
+        <button class="btn-back" @click="router.push({ name: 'upload' })">
+          <AppIcon name="chevron-left" :size="16" />返回
+        </button>
         <h2>{{ summary.name }}</h2>
-        <div class="header-actions"><button class="btn btn-sm" @click="goReport">导出报告</button></div>
+        <div class="header-actions">
+          <button class="btn btn-sm" @click="goReport">
+            <AppIcon name="printer" :size="14" />导出报告
+          </button>
+        </div>
       </div>
 
       <div class="dashboard-grid">
         <aside class="sidebar">
           <SummaryPanel :summary="summary" />
           <div class="tab-bar">
-            <button v-for="tab in tabs" :key="tab.key" class="tab-btn" :class="{ active: activeTab === tab.key }" @click="switchTab(tab.key)">{{ tab.label }}</button>
+            <button
+              v-for="tab in tabs"
+              :key="tab.key"
+              class="tab-btn"
+              :class="{ active: activeTab === tab.key }"
+              @click="switchTab(tab.key)"
+            >
+              <AppIcon :name="tab.icon" :size="15" />
+              {{ tab.label }}
+            </button>
           </div>
 
-          <div v-if="activeTab === 'coverage' || activeTab === 'cluster' || activeTab === 'h3' || activeTab === 'site'" class="map-legend">
+          <!-- Floating legend -->
+          <div v-if="activeTab === 'coverage' || activeTab === 'cluster' || activeTab === 'h3' || activeTab === 'site'" class="map-legend-floating">
             <template v-if="activeTab === 'coverage'">
-              <span class="legend-item"><span class="legend-swatch" style="background:rgba(82,196,26,0.5);border:2px solid #237804"></span>已覆盖</span>
-              <span class="legend-item"><span class="legend-swatch" style="background:rgba(255,77,79,0.3);border:2px solid #a8071a"></span>集群内盲区</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:rgba(52,199,89,0.4);border:2px solid #34C759"></span>已覆盖</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:rgba(255,59,48,0.25);border:2px solid #FF3B30"></span>集群内盲区</span>
             </template>
             <template v-if="activeTab === 'cluster'">
-              <span class="legend-item"><span class="legend-dot" style="background:rgba(22,119,255,0.4);border:2px solid #0958d9"></span>聚类中心</span>
+              <span class="legend-item"><span class="legend-dot" style="background:rgba(0,122,255,0.35);border:2px solid #007AFF"></span>聚类中心</span>
               <span class="legend-item">圆圈大小 = 点数</span>
             </template>
             <template v-if="activeTab === 'h3'">
-              密度 <span class="legend-item"><span class="legend-swatch" style="background:#91cf60"></span>低</span>
-              <span class="legend-item"><span class="legend-swatch" style="background:#fee08b"></span></span>
-              <span class="legend-item"><span class="legend-swatch" style="background:#d73027"></span>高</span>
+              密度
+              <span class="legend-item"><span class="legend-swatch" style="background:#91CF60"></span>低</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#FEE08B"></span></span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#D73027"></span>高</span>
             </template>
             <template v-if="activeTab === 'site'">
-              <span class="legend-item"><span class="legend-dot" style="background:#f5222d"></span>第1</span>
-              <span class="legend-item"><span class="legend-dot" style="background:#fa8c16"></span>第2-3</span>
-              <span class="legend-item"><span class="legend-dot" style="background:#1677ff"></span>其他</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--color-error)"></span>第1</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--color-warning)"></span>第2-3</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--color-accent)"></span>其他</span>
             </template>
           </div>
 
           <div class="panel-content">
-            <CoveragePanel v-if="activeTab === 'coverage'" :project-id="projectId" @result="handleCoverage" />
-            <HeatmapPanel v-if="activeTab === 'heatmap'" :project-id="projectId" @result="handleHeatmap" />
-            <ClusterPanel v-if="activeTab === 'cluster'" :project-id="projectId" @result="handleCluster" />
-            <SiteOptimizationPanel v-if="activeTab === 'site'" :project-id="projectId" :clicked-candidate="siteClickPoint" @result="handleSite" />
-            <H3HexagonPanel v-if="activeTab === 'h3'" :project-id="projectId" @result="handleH3" />
+            <Transition name="panel-fade" mode="out-in">
+              <CoveragePanel v-if="activeTab === 'coverage'" :project-id="projectId" @result="handleCoverage" :key="'coverage'" />
+              <HeatmapPanel v-else-if="activeTab === 'heatmap'" :project-id="projectId" @result="handleHeatmap" :key="'heatmap'" />
+              <ClusterPanel v-else-if="activeTab === 'cluster'" :project-id="projectId" @result="handleCluster" :key="'cluster'" />
+              <SiteOptimizationPanel v-else-if="activeTab === 'site'" :project-id="projectId" :clicked-candidate="siteClickPoint" @result="handleSite" :key="'site'" />
+              <H3HexagonPanel v-else-if="activeTab === 'h3'" :project-id="projectId" @result="handleH3" :key="'h3'" />
+            </Transition>
           </div>
         </aside>
-        <main class="map-area"><MapContainer :points="validPoints" :click-enabled="clickEnabled" @ready="onMapReady" @map-click="handleMapClick" /></main>
+        <main class="map-area">
+          <MapContainer :points="validPoints" :click-enabled="clickEnabled" @ready="onMapReady" @map-click="handleMapClick" />
+        </main>
       </div>
     </template>
-    <div v-else class="empty">项目不存在</div>
+    <div v-else class="empty">
+      <div class="empty-content">
+        <AppIcon name="alert" :size="32" color="var(--color-text-tertiary)" />
+        <p>项目不存在</p>
+        <button class="btn btn-sm btn-primary" @click="router.push({ name: 'upload' })">创建新项目</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -60,6 +90,7 @@ import { useToast } from '@/composables/useToast'
 import { useAmap } from '@/composables/useAmap'
 import type { CoverageResult, ClusterResult, HeatmapPoint, SiteOptimizationResult } from '@/types'
 import MapContainer from '@/components/shared/MapContainer.vue'
+import AppIcon from '@/components/shared/AppIcon.vue'
 import SummaryPanel from '@/components/dashboard/SummaryPanel.vue'
 import CoveragePanel from '@/components/dashboard/CoveragePanel.vue'
 import HeatmapPanel from '@/components/dashboard/HeatmapPanel.vue'
@@ -84,50 +115,45 @@ const summary = computed(() => projectStore.currentSummary)
 const validPoints = computed(() => projectStore.validPoints)
 
 const tabs = [
-  { key: 'coverage', label: '覆盖范围' },
-  { key: 'heatmap', label: '热力图' },
-  { key: 'cluster', label: '聚类分析' },
-  { key: 'site', label: '选址优化' },
-  { key: 'h3', label: '等值区域' },
-]
+  { key: 'coverage', label: '覆盖', icon: 'target' },
+  { key: 'heatmap', label: '热力', icon: 'heat' },
+  { key: 'cluster', label: '聚类', icon: 'cluster' },
+  { key: 'h3', label: '等值区', icon: 'hexagon' },
+  { key: 'site', label: '选址', icon: 'site' },
+] as const
 
-function onMapReady(map: any) { mapInstance.value = map }
-function switchTab(key: string) { activeTab.value = key; clearOverlays() }
-function goReport() { router.push({ name: 'report', params: { id: projectId } }) }
-
-function handleMapClick(pt: { lng: number; lat: number }) {
-  siteClickPoint.value = { lng: pt.lng, lat: pt.lat }
+function switchTab(key: string) {
+  clearOverlays()
+  activeTab.value = key
 }
 
-function handleCoverage(data: CoverageResult | CoverageResult[]) {
+function onMapReady(map: any) {
+  mapInstance.value = map
+}
+
+function handleMapClick(pt: { lng: number; lat: number }) {
+  siteClickPoint.value = pt
+}
+
+function goReport() {
+  router.push({ name: 'report', params: { id: projectId } })
+}
+
+function handleCoverage(data: any) {
   clearOverlays()
-  const list = Array.isArray(data) ? data : [data]
-  // Multi-radius: different shades for different radii
-  const colors = [
-    { fill: 'rgba(82,196,26,0.25)', stroke: '#237804' },
-    { fill: 'rgba(82,196,26,0.40)', stroke: '#389e0d' },
-    { fill: 'rgba(82,196,26,0.55)', stroke: '#52c41a' },
-  ]
-  let totalCovered = 0
-  let totalUncovered = 0
-  for (let i = 0; i < list.length; i++) {
-    const item = list[i]
-    if (!item?.geojson) continue
-    const c = colors[i] || colors[0]
-    try {
-      if (item.geojson.covered) totalCovered += addGeoJSONPolygons(item.geojson.covered, c.fill, c.stroke, 0.35)
-    } catch (e: any) {}
-    try {
-      if (item.geojson.uncovered) totalUncovered += addGeoJSONPolygons(item.geojson.uncovered, 'rgba(255,77,79,0.3)', '#a8071a', 0.2)
-    } catch (e: any) {}
-  }
-  if (list.length > 1) {
-    show('多半径对比完成: ' + list.length + ' 层, 颜色越深半径越大 (2km浅/3km中/5km深)', 'success')
-  } else if (totalCovered === 0 && totalUncovered === 0) {
-    show('覆盖率: ' + (list[0]?.coverageRatio || 0) + '% (无区域数据可渲染)', 'info')
-  } else {
-    show('覆盖分析完成: 绿色=已覆盖(' + totalCovered + ') 红色=集群内盲区(' + totalUncovered + ')', 'success')
-  }
+  // Backend returns { geojson: { covered, uncovered }, coverageRatio, ... }
+  // ST_AsGeoJSON returns Feature objects; extract .geometry for addGeoJSONPolygons
+  const geojson = data.geojson || {}
+  let covered = geojson.covered || data.coveredPolygons
+  let uncovered = geojson.uncovered || data.gapPolygons
+  
+  // Unwrap Feature -> geometry if needed
+  if (covered && covered.type === 'Feature') covered = covered.geometry
+  if (uncovered && uncovered.type === 'Feature') uncovered = uncovered.geometry
+  
+  if (covered) addGeoJSONPolygons(covered, 'rgba(52,199,89,0.35)', '#34C759')
+  if (uncovered) addGeoJSONPolygons(uncovered, 'rgba(255,59,48,0.2)', '#FF3B30')
+  if (!covered && !uncovered) show('未检测到覆盖数据', 'info')
 }
 
 function handleHeatmap(data: { points: HeatmapPoint[] }) {
@@ -144,7 +170,7 @@ function handleCluster(data: ClusterResult) {
   const AMap = (window as any).AMap
   data.clusters.forEach((c: any) => {
     const r = Math.min(c.pointCount * 2 + 10, 50)
-    const html = '<div style="width:' + (r*2) + 'px;height:' + (r*2) + 'px;border-radius:50%;background:rgba(22,119,255,0.3);border:2px solid #0958d9;display:flex;align-items:center;justify-content:center;color:#0958d9;font-size:11px;font-weight:bold;pointer-events:none">' + c.pointCount + '</div>'
+    const html = '<div style="width:' + (r * 2) + 'px;height:' + (r * 2) + 'px;border-radius:50%;background:rgba(0,122,255,0.3);border:2px solid #007AFF;display:flex;align-items:center;justify-content:center;color:#007AFF;font-size:11px;font-weight:bold;pointer-events:none">' + c.pointCount + '</div>'
     const marker = new AMap.Marker({
       position: [c.center.lng, c.center.lat],
       content: html,
@@ -153,14 +179,16 @@ function handleCluster(data: ClusterResult) {
     })
     marker.setMap(map)
   })
-  show('聚类分析完成: ' + data.clusters.length + ' 个聚类, 蓝色圆大小=点数(固定像素)', 'success')
+  show('聚类分析完成: ' + data.clusters.length + ' 个聚类', 'success')
 }
 
 function handleSite(data: SiteOptimizationResult) {
   clearOverlays()
   if (!data.candidates?.length) { show('未找到候选位置', 'info'); return }
-  const colors = ['#f5222d', '#fa8c16', '#faad14', '#1677ff', '#1677ff']
-  addMarkers(data.candidates.map((c, i) => ({ lng: c.lng, lat: c.lat, label: c.name + ' ' + c.score, color: colors[i] || '#1677ff', name: c.name + ' ' + c.score })))
+  const colors = [getComputedStyle(document.documentElement).getPropertyValue('--color-error').trim() || '#FF3B30',
+    getComputedStyle(document.documentElement).getPropertyValue('--color-warning').trim() || '#FF9500', '#FF9500',
+    getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#007AFF', '#007AFF']
+  addMarkers(data.candidates.map((c, i) => ({ lng: c.lng, lat: c.lat, label: c.name + ' ' + c.score, color: colors[i] || '#007AFF', name: c.name + ' ' + c.score })))
   fitBounds(data.candidates.map((c: any) => ({ lng: c.lng, lat: c.lat })))
 }
 
@@ -179,43 +207,190 @@ async function handleH3(data: any) {
         }
       } catch {}
     })
+    fitBounds(validPoints.value)
   } catch { show('H3渲染失败', 'error') }
 }
 
-function getH3Color(i: number): string { if(i>=0.8)return'#d73027';if(i>=0.6)return'#fc8d59';if(i>=0.4)return'#fee08b';if(i>=0.2)return'#d9ef8b';return'#91cf60' }
+function getH3Color(i: number): string {
+  if (i >= 0.8) return '#D73027'
+  if (i >= 0.6) return '#FC8D59'
+  if (i >= 0.4) return '#FEE08B'
+  if (i >= 0.2) return '#D9EF8B'
+  return '#91CF60'
+}
 
 onMounted(async () => {
-  try { await projectStore.loadProject(projectId) }
-  catch (e: any) { show(e.message || '加载失败', 'error') }
-  finally { loading.value = false }
+  try {
+    await projectStore.loadProject(projectId)
+  } catch (e: any) {
+    show(e.message || '加载失败', 'error')
+  } finally {
+    loading.value = false
+  }
 })
 </script>
 
 <style scoped>
-.dashboard-view { height: calc(100vh - 60px); display: flex; flex-direction: column; }
-.loading-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; }
-.spinner { width: 32px; height: 32px; border: 3px solid #e8e8e8; border-top-color: #1677ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.dashboard-header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid #e8e8e8; background: #fff; }
-.dashboard-header h2 { margin: 0; font-size: 18px; flex: 1; }
-.header-actions { display: flex; gap: 8px; }
-.btn-back { background: none; border: none; color: #1677ff; font-size: 14px; cursor: pointer; }
-.btn { padding: 6px 14px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; cursor: pointer; background: #fff; }
-.btn-sm { font-size: 12px; }
-.btn:hover { border-color: #1677ff; color: #1677ff; }
-.dashboard-grid { flex: 1; display: grid; grid-template-columns: 340px 1fr; overflow: hidden; }
-.sidebar { overflow-y: auto; border-right: 1px solid #e8e8e8; background: #fff; }
-.tab-bar { display: flex; border-bottom: 1px solid #e8e8e8; }
-.tab-btn { flex: 1; padding: 10px 0; border: none; background: none; font-size: 13px; cursor: pointer; color: #666; border-bottom: 2px solid transparent; }
-.tab-btn.active { color: #1677ff; border-bottom-color: #1677ff; }
-.map-legend { display: flex; gap: 10px; padding: 6px 12px; background: #fafafa; border-bottom: 1px solid #e8e8e8; font-size: 11px; align-items: center; flex-wrap: wrap; }
-.legend-item { display: flex; align-items: center; gap: 3px; color: #555; }
-.legend-swatch { display: inline-block; width: 18px; height: 10px; border-radius: 2px; }
-.legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
-.panel-content { padding: 0; }
-.map-area { position: relative; overflow: hidden; }
-.empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #999; }
-</style>
+.dashboard-view {
+  height: calc(100vh - var(--nav-height));
+  display: flex;
+  flex-direction: column;
+}
+
+.loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* ── Header ── */
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-bg-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: 0 0.5px 0 var(--color-border);
+  flex-shrink: 0;
+}
+
+.dashboard-header h2 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  flex: 1;
+  letter-spacing: -0.01em;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ── Grid ── */
+.dashboard-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  overflow: hidden;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--color-bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--color-border);
+}
+
+/* ── Tab Bar ── */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 var(--space-2);
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
+  font-size: var(--text-xs);
+  font-family: var(--font-system);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all var(--duration-fast) var(--ease-smooth);
+  position: relative;
+}
+
+.tab-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.tab-btn.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+/* ── Floating Legend ── */
+.map-legend-floating {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-card);
+  backdrop-filter: var(--glass-blur-light);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  align-items: center;
+  flex-wrap: wrap;
+  margin: var(--space-2);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Panel Content ── */
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+/* ── Map ── */
+.map-area {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Empty State ── */
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.empty-content {
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.empty-content p {
+  margin: var(--space-3) 0;
+}
+
+/* ── Panel Transitions ── */
+.panel-fade-enter-active,
+.panel-fade-leave-active {
+  transition:
+    opacity var(--duration-normal) var(--ease-smooth),
+    transform var(--duration-normal) var(--ease-smooth);
+}
+
+.panel-fade-enter-from,
+.panel-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* ── Responsive ── */
 @media (max-width: 768px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
@@ -230,6 +405,8 @@ onMounted(async () => {
     min-height: 300px;
   }
   .dashboard-header h2 {
-    font-size: 15px;
+    font-size: var(--text-sm);
   }
 }
+</style>
+

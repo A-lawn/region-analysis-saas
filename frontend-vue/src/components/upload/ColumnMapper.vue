@@ -57,34 +57,45 @@ function onChange(key: string, event: Event) {
 .column-mapper {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
+
 .mapping-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
+
 .mapping-label {
   width: 60px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  flex-shrink: 0;
 }
+
 .required {
-  color: #ff4d4f;
+  color: var(--color-error);
 }
+
 .mapping-select {
   flex: 1;
-  padding: 6px 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  font-size: 14px;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-family: var(--font-system);
+  background: var(--color-bg-card-solid);
+  color: var(--color-text-primary);
 }
+
 .mapping-status {
-  width: 60px;
-  font-size: 12px;
-  color: #999;
+  width: 50px;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
 }
+
 .mapping-status.detected {
-  color: #52c41a;
+  color: var(--color-success);
 }
 </style>

@@ -8,12 +8,16 @@
     @click="triggerInput"
   >
     <div class="drop-content" v-if="!fileName">
-      <span class="drop-icon">📂</span>
+      <span class="drop-icon">
+        <AppIcon name="upload" :size="32" />
+      </span>
       <p>拖拽文件到此处，或点击选择</p>
       <small>支持 .xlsx .xls .csv，最大 50MB</small>
     </div>
     <div class="drop-content" v-else>
-      <span class="drop-icon">📄</span>
+      <span class="drop-icon">
+        <AppIcon name="doc" :size="32" />
+      </span>
       <p>{{ fileName }}</p>
       <small>点击可重新选择</small>
     </div>
@@ -29,6 +33,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppIcon from '@/components/shared/AppIcon.vue'
 
 const emit = defineEmits<{
   file: [file: File]
@@ -61,27 +66,43 @@ function selectFile(file: File) {
 
 <style scoped>
 .drop-zone {
-  border: 2px dashed #d9d9d9;
-  border-radius: 12px;
-  padding: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-8);
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s;
+  background: var(--color-bg-card);
+  transition:
+    transform var(--duration-fast) var(--ease-spring),
+    background var(--duration-normal) var(--ease-smooth),
+    border-color var(--duration-normal) var(--ease-smooth);
 }
-.drop-zone:hover,
+
+.drop-zone:hover {
+  border-color: var(--color-accent);
+  transform: scale(1.01);
+}
+
 .drop-zone.drag-over {
-  border-color: #1677ff;
-  background: #f0f5ff;
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  transform: scale(1.02);
 }
+
 .drop-icon {
-  font-size: 36px;
+  color: var(--color-accent);
+  display: block;
+  margin-bottom: var(--space-2);
 }
+
 .drop-content p {
-  margin: 12px 0 4px;
-  font-size: 16px;
-  color: #333;
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
 }
+
 .drop-content small {
-  color: #999;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
 }
 </style>

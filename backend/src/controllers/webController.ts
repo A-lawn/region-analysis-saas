@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+﻿import { Router, Request, Response } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { v4 as uuidv4 } from "uuid";
@@ -22,7 +22,8 @@ import {
   validateClusterParams,
   validateSiteOptimizationParams,
 } from "../validators/analysisValidator";
-import { analysisLimiter } from "../middleware/rateLimit";
+import { analysisLimiter } from "../middleware/rateLimit";
+
 import { validateProjectName } from "../validators/projectValidator";
 import { aggregateByH3 } from "../utils/h3Index";
 import { getTaskStatus } from "../services/analysisService";
@@ -45,7 +46,7 @@ const upload = multer({
     if (ext.endsWith(".xlsx") || ext.endsWith(".xls") || ext.endsWith(".csv")) {
       cb(null, true);
     } else {
-      cb(new AppError(400, "只支持 .xlsx, .xls, .csv 格式", "INVALID_FILE_TYPE"));
+      cb(new AppError(400, "鍙敮鎸?.xlsx, .xls, .csv 鏍煎紡", "INVALID_FILE_TYPE"));
     }
   },
 });
@@ -55,7 +56,7 @@ const uploadSessions = new Map<string, { data: any[][]; headers: string[]; sourc
 
 // ---- POST /api/web/upload (auth required) ----
 router.post("/upload", authRequired, upload.single("file"), validateUpload, async (req: Request, res: Response) => {
-  if (!req.file) throw new AppError(400, "请上传Excel文件", "FILE_REQUIRED");
+  if (!req.file) throw new AppError(400, "璇蜂笂浼燛xcel鏂囦欢", "FILE_REQUIRED");
 
   const sourceCrs = (req.body.source_crs || "gcj02") as CrsType;
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -109,24 +110,24 @@ router.post("/upload/confirm", authRequired, validateProjectName, async (req: Re
   const { uploadId, columnMapping } = req.body;
 
   if (!columnMapping || columnMapping.lngCol === null || columnMapping.latCol === null) {
-    throw new AppError(400, "必须指定经度和纬度列", "MISSING_COORD_COLUMNS");
+    throw new AppError(400, "蹇呴』鎸囧畾缁忓害鍜岀含搴﹀垪", "MISSING_COORD_COLUMNS");
   }
 
   const session = uploadSessions.get(uploadId);
-  if (!session) throw new AppError(400, "上传会话已过期，请重新上传文件", "SESSION_EXPIRED");
+  if (!session) throw new AppError(400, "上传会话已过期,请重新上传文件", "SESSION_EXPIRED");
 
   const result = await processUpload(
     session.data,
     columnMapping,
     session.sourceCrs as CrsType,
-    session.fileName || "导入_" + new Date().toISOString().slice(0, 10),
+    session.fileName || "瀵煎叆_" + new Date().toISOString().slice(0, 10),
     getTenantId(req)
   );
 
   uploadSessions.delete(uploadId);
 
   if (!result.projectId) {
-    throw new AppError(400, result.errors.join("; ") || "数据导入失败", "IMPORT_FAILED");
+    throw new AppError(400, result.errors.join("; ") || "鏁版嵁瀵煎叆澶辫触", "IMPORT_FAILED");
   }
 
   res.json({
@@ -139,8 +140,12 @@ router.post("/upload/confirm", authRequired, validateProjectName, async (req: Re
 
 // ---- GET /api/web/projects (auth required, tenant-scoped) ----
 router.get("/projects", authRequired, async (req: Request, res: Response) => {
-  const projects = await listProjects(getTenantId(req));
-  res.json({ projects });
+  const result = await listProjects(getTenantId(req), {
+    search: req.query.search as string,
+    page: parseInt(req.query.page as string) || 1,
+    limit: parseInt(req.query.limit as string) || 20,
+  });
+  res.json(result);
 });
 
 // ---- GET /api/web/projects/:id/summary (auth required) ----
@@ -179,9 +184,9 @@ router.post("/projects/:id/analysis/site-optimization", authRequired, analysisLi
 // ---- POST /api/web/geocode (auth required) ----
 router.post("/geocode", authRequired, async (req: Request, res: Response) => {
   const { address } = req.body;
-  if (!address) throw new AppError(400, "请提供地址", "ADDRESS_REQUIRED");
+  if (!address) throw new AppError(400, "璇锋彁渚涘湴鍧€", "ADDRESS_REQUIRED");
   const result = await geocode(address);
-  if (!result) throw new AppError(404, "地址解析失败，请检查地址是否正确", "GEOCODE_FAILED");
+  if (!result) throw new AppError(404, "鍦板潃瑙ｆ瀽澶辫触锛岃妫€鏌ュ湴鍧€鏄惁姝ｇ‘", "GEOCODE_FAILED");
   res.json(result);
 });
 
@@ -191,7 +196,7 @@ router.post("/reverse-geocode", authRequired, async (req: Request, res: Response
   if (lng == null || lat == null) throw new AppError(400, "请提供坐标", "COORDS_REQUIRED");
   const { reverseGeocode } = require("../services/geocodingService");
   const address = await reverseGeocode(lng, lat);
-  if (!address) throw new AppError(404, "反向地址解析失败", "REVERSE_GEOCODE_FAILED");
+  if (!address) throw new AppError(404, "鍙嶅悜鍦板潃瑙ｆ瀽澶辫触", "REVERSE_GEOCODE_FAILED");
   res.json({ lng, lat, address });
 });
 
@@ -203,6 +208,13 @@ router.get("/projects/:id/points", authRequired, async (req: Request, res: Respo
   const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit as string) || 500));
   const offset = (page - 1) * limit;
 
+  // Fetch project source_crs and points in parallel
+  const projectRow = await db.oneOrNone(
+    "SELECT source_crs FROM analysis_projects WHERE id = $[projectId]",
+    { projectId }
+  );
+  const projectCrs = projectRow?.source_crs || "gcj02";
+  
   const [points, countResult] = await Promise.all([
     db.manyOrNone(
       "SELECT id, name, address, lng, lat, metadata FROM spatial_points WHERE project_id = $[projectId] ORDER BY id LIMIT $[limit] OFFSET $[offset]",
@@ -211,12 +223,12 @@ router.get("/projects/:id/points", authRequired, async (req: Request, res: Respo
     db.one("SELECT COUNT(*)::INTEGER AS total FROM spatial_points WHERE project_id = $[projectId]", { projectId }),
   ]);
 
-  // Convert WGS-84 (DB) back to GCJ-02 for AMap display
+  // Convert from WGS-84 (DB) to original source CRS for frontend display
   const { convertCoord } = require('../utils/coordTransform');
   const displayPoints = (points || []).map((p: any) => {
     try {
-      const gcj = convertCoord(p.lng, p.lat, 'wgs84', 'gcj02');
-      return { ...p, lng: gcj.lng, lat: gcj.lat };
+      const crs = convertCoord(p.lng, p.lat, 'wgs84', projectCrs);
+      return { ...p, lng: crs.lng, lat: crs.lat };
     } catch { return p; }
   });
 

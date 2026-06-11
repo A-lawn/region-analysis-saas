@@ -1,0 +1,151 @@
+﻿/* ═══════════════════════════════════════════════════════
+   Design Tokens — Apple HIG 风格变量体系
+   基于 4px 基数、语义化命名、预留暗色模式
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Color: Background ── */
+  --color-bg-primary: #F2F2F7;
+  --color-bg-card: rgba(255, 255, 255, 0.72);
+  --color-bg-card-solid: #FFFFFF;
+  --color-bg-elevated: rgba(255, 255, 255, 0.88);
+  --color-bg-input: #F2F2F7;
+  --color-bg-hover: rgba(0, 122, 255, 0.06);
+  --color-bg-glass: rgba(242, 242, 247, 0.72);
+
+  /* ── Color: Border ── */
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-light: rgba(0, 0, 0, 0.04);
+  --color-border-focus: rgba(0, 122, 255, 0.35);
+
+  /* ── Color: Accent (Apple Blue) ── */
+  --color-accent: #007AFF;
+  --color-accent-hover: #0062CC;
+  --color-accent-pressed: #004999;
+  --color-accent-subtle: rgba(0, 122, 255, 0.08);
+
+  /* ── Color: Text ── */
+  --color-text-primary: rgba(0, 0, 0, 0.88);
+  --color-text-secondary: rgba(0, 0, 0, 0.6);
+  --color-text-tertiary: rgba(0, 0, 0, 0.36);
+  --color-text-inverse: #FFFFFF;
+  --color-text-accent: #007AFF;
+
+  /* ── Color: Semantic ── */
+  --color-success: #34C759;
+  --color-warning: #FF9500;
+  --color-error: #FF3B30;
+  --color-error-bg: rgba(255, 59, 48, 0.08);
+  --color-success-bg: rgba(52, 199, 89, 0.08);
+  --color-warning-bg: rgba(255, 149, 0, 0.08);
+
+  /* ── Color: Data Visualization ── */
+  --color-data-low: #91CF60;
+  --color-data-mid: #FEE08B;
+  --color-data-high: #D73027;
+  --color-data-1: #007AFF;
+  --color-data-2: #FF9500;
+  --color-data-3: #34C759;
+  --color-data-4: #FF3B30;
+  --color-data-5: #AF52DE;
+
+  /* ── Spacing (4px base) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+
+  /* ── Border Radius ── */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ── */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 32px rgba(0, 0, 0, 0.10);
+  --shadow-floating: 0 2px 4px rgba(0, 0, 0, 0.08), 0 12px 40px rgba(0, 0, 0, 0.14);
+  --shadow-focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.25);
+
+  /* ── Typography: Font Family ── */
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Fira Code",
+    Menlo, Consolas, monospace;
+
+  /* ── Typography: Font Size ── */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 28px;
+  --text-3xl: 34px;
+
+  /* ── Typography: Line Height ── */
+  --leading-tight: 1.15;
+  --leading-normal: 1.4;
+  --leading-relaxed: 1.6;
+
+  /* ── Typography: Font Weight ── */
+  --font-regular: 400;
+  --font-medium: 500;
+  --font-semibold: 590;
+  --font-bold: 700;
+
+  /* ── Easing (Apple-style) ── */
+  --ease-out-apple: cubic-bezier(0.25, 0.1, 0.25, 1.0);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1.0);
+  --ease-smooth: cubic-bezier(0.4, 0.0, 0.2, 1.0);
+
+  /* ── Duration ── */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+
+  /* ── Glass Effect ── */
+  --glass-blur: blur(20px) saturate(180%);
+  --glass-blur-light: blur(12px) saturate(150%);
+
+  /* ── Navigation ── */
+  --nav-height: 52px;
+}
+
+/* ── 暗色模式预留 ── */
+[data-theme="dark"] {
+  --color-bg-primary: #000000;
+  --color-bg-card: rgba(44, 44, 46, 0.72);
+  --color-bg-card-solid: #1C1C1E;
+  --color-bg-elevated: rgba(44, 44, 46, 0.88);
+  --color-bg-input: #1C1C1E;
+  --color-bg-hover: rgba(0, 122, 255, 0.12);
+  --color-bg-glass: rgba(28, 28, 30, 0.72);
+
+  --color-border: rgba(255, 255, 255, 0.10);
+  --color-border-light: rgba(255, 255, 255, 0.06);
+  --color-border-focus: rgba(0, 122, 255, 0.45);
+
+  --color-accent: #0A84FF;
+  --color-accent-hover: #409CFF;
+  --color-accent-pressed: #0070E0;
+  --color-accent-subtle: rgba(10, 132, 255, 0.12);
+
+  --color-text-primary: rgba(255, 255, 255, 0.92);
+  --color-text-secondary: rgba(255, 255, 255, 0.6);
+  --color-text-tertiary: rgba(255, 255, 255, 0.36);
+  --color-text-inverse: #000000;
+  --color-text-accent: #0A84FF;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.20), 0 4px 16px rgba(0, 0, 0, 0.30);
+  --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.30), 0 8px 32px rgba(0, 0, 0, 0.40);
+  --shadow-floating: 0 2px 4px rgba(0, 0, 0, 0.35), 0 12px 40px rgba(0, 0, 0, 0.50);
+  --shadow-focus-ring: 0 0 0 3px rgba(10, 132, 255, 0.35);
+}
