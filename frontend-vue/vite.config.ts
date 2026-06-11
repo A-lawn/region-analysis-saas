@@ -1,4 +1,4 @@
-﻿import { defineConfig } from 'vite'
+import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
@@ -17,10 +17,5 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
-  },
-  build: {
-    // Output to public/ for nginx to serve alongside old frontend
-    outDir: resolve(__dirname, '..', 'public', 'app'),
-    emptyOutDir: true,
   },
 })

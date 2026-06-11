@@ -55,11 +55,14 @@
     +-- backup.sh             # 数据库备份脚本
 +-- nginx/
     +-- default.conf          # Nginx 反向代理配置
-+-- public/                   # 静态资源
-    +-- app/                  # 前端构建产物 (Vite build)
-    +-- index.html            # SPA 入口
-    +-- privacy.html          # 隐私政策
-    +-- terms.html            # 服务条款
++-- public/                   # 前端构建产物 + 静态页
+    +-- assets/             # JS/CSS 构建产物 (Vite build)
+    +-- favicon.svg         # 站点图标
+    +-- icons.svg           # SVG 图标 sprite
+    +-- index.html          # SPA 入口
+    +-- privacy.html        # 隐私政策
+    +-- terms.html          # 服务条款
+    
 +-- sample-data/              # 测试数据 (5个文件)
 +-- docker-compose.yml        # 服务编排
 +-- .env.example              # 环境变量示例

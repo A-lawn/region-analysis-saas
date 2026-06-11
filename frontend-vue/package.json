@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "build:deploy": "vue-tsc -b && vite build && powershell -Command \"Remove-Item -Path '../public/*' -Exclude 'privacy.html','terms.html' -Recurse -Force -ErrorAction SilentlyContinue; Copy-Item -Path 'dist/*' -Destination '../public/' -Recurse -Force\"",
     "preview": "vite preview"
   },
   "dependencies": {
