@@ -78,3 +78,37 @@ export async function getTaskStatus(taskId: string): Promise<TaskInfo> {
   const { data } = await apiClient.get('/tasks/' + taskId)
   return data
 }
+
+// ---- Delete / Restore / Purge ----
+
+export interface DeletedProject {
+  projectName: string
+  projectId: string
+  deletedAt: string
+  pointCount: number
+  filePath: string
+  expiresAt: string
+  daysRemaining: number
+  sourceCrs: string
+}
+
+export async function deleteProject(id: string): Promise<{ deleted: boolean }> {
+  const { data } = await apiClient.delete('/projects/' + id)
+  return data
+}
+
+export async function listDeletedProjects(): Promise<{ backups: DeletedProject[] }> {
+  const { data } = await apiClient.get('/projects/deleted')
+  return data
+}
+
+export async function restoreProject(projectId: string): Promise<{ projectId: string; name: string }> {
+  const { data } = await apiClient.post('/projects/' + projectId + '/restore', { projectId })
+  return data
+}
+
+export async function purgeProject(projectId: string, removeBackup: boolean = false): Promise<{ purged: boolean }> {
+  const { data } = await apiClient.delete('/projects/deleted/purge', { data: { projectId, removeBackup } })
+  return data
+}
+

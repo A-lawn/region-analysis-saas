@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ProjectSummary, SpatialPoint } from '@/types'
-import { listProjects, getProjectSummary, getPoints } from '@/api'
+import type { ProjectSummary, SpatialPoint, DeletedProject } from '@/types'
+import { listProjects, getProjectSummary, getPoints, deleteProject as apiDeleteProject, listDeletedProjects, restoreProject as apiRestoreProject, purgeProject as apiPurgeProject } from '@/api'
 
 export const useProjectStore = defineStore('project', () => {
   const projects = ref<any[]>([])
@@ -14,6 +14,8 @@ export const useProjectStore = defineStore('project', () => {
   const pointsTotal = ref(0)
   const pointsTotalPages = ref(0)
   const loading = ref(false)
+  const deletedProjects = ref<DeletedProject[]>([])
+  const deletedLoading = ref(false)
 
   const validPoints = computed(() =>
     currentPoints.value.filter(
@@ -74,6 +76,32 @@ export const useProjectStore = defineStore('project', () => {
     pointsTotalPages.value = 0
   }
 
+  async function deleteProject(id: string) {
+    await apiDeleteProject(id)
+    projects.value = projects.value.filter((p) => p.id !== id)
+  }
+
+  async function fetchDeletedProjects() {
+    deletedLoading.value = true
+    try {
+      const { backups } = await listDeletedProjects()
+      deletedProjects.value = backups || []
+    } finally {
+      deletedLoading.value = false
+    }
+  }
+
+  async function restoreDeletedProject(projectId: string) {
+    await apiRestoreProject(projectId)
+    deletedProjects.value = deletedProjects.value.filter((p) => p.projectId !== projectId)
+    await fetchProjects()
+  }
+
+  async function purgeDeletedProject(projectId: string, removeBackup: boolean = false) {
+    await apiPurgeProject(projectId, removeBackup)
+    deletedProjects.value = deletedProjects.value.filter((p) => p.projectId !== projectId)
+  }
+
   return {
     projects,
     currentProjectId,
@@ -89,5 +117,11 @@ export const useProjectStore = defineStore('project', () => {
     loadProject,
     loadMorePoints,
     clearProject,
+    deletedProjects,
+    deletedLoading,
+    deleteProject,
+    fetchDeletedProjects,
+    restoreDeletedProject,
+    purgeDeletedProject,
   }
 })

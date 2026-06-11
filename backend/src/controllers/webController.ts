@@ -27,6 +27,7 @@ import { analysisLimiter } from "../middleware/rateLimit";
 import { validateProjectName } from "../validators/projectValidator";
 import { aggregateByH3 } from "../utils/h3Index";
 import { getTaskStatus } from "../services/analysisService";
+import { backupProject, listBackups, restoreProject, removeBackupFile, ensureBackupDir } from "../services/backupService";
 
 const router = Router();
 
@@ -273,4 +274,83 @@ router.get("/industries/:id/model", authRequired, async (req: Request, res: Resp
   res.json(model);
 });
 
+
+// ---- DELETE /api/web/projects/:id (soft-delete, auth required) ----
+router.delete("/projects/:id", authRequired, async (req: Request, res: Response) => {
+  const db = require("../db").default;
+  const projectId = req.params.id;
+  const tenantId = getTenantId(req);
+
+  const project = await db.oneOrNone(
+    "SELECT * FROM analysis_projects WHERE id = $[id] AND deleted_at IS NULL",
+    { id: projectId }
+  );
+  if (!project) throw new AppError(404, "项目不存在或已删除", "PROJECT_NOT_FOUND");
+
+  // Backup project data
+  let backupPath = "";
+  try {
+    backupPath = await backupProject(projectId, tenantId);
+  } catch (err: any) {
+    throw new AppError(500, "备份项目数据失败: " + err.message, "BACKUP_FAILED");
+  }
+
+  // Soft-delete
+  await db.none(
+    "UPDATE analysis_projects SET deleted_at = NOW() WHERE id = $[id]",
+    { id: projectId }
+  );
+
+  res.json({ deleted: true, backupPath });
+});
+
+// ---- GET /api/web/projects/deleted (recycle bin list, auth required) ----
+router.get("/projects/deleted", authRequired, async (req: Request, res: Response) => {
+  const backups = await listBackups(getTenantId(req));
+  res.json({ backups });
+});
+
+// ---- POST /api/web/projects/:id/restore (restore from backup, auth required) ----
+router.post("/projects/:id/restore", authRequired, async (req: Request, res: Response) => {
+  const tenantId = getTenantId(req);
+  const backups = await listBackups(tenantId);
+  const match = backups.find((b: any) => b.projectId === req.body.projectId);
+  if (!match) throw new AppError(404, "未找到该项目的备份文件", "BACKUP_NOT_FOUND");
+
+  const result = await restoreProject(match.filePath);
+  // Remove backup file so it no longer appears in recycle bin
+  await removeBackupFile(match.filePath);
+  res.json(result);
+});
+
+// ---- DELETE /api/web/projects/deleted/purge (hard-delete, auth required) ----
+router.delete("/projects/deleted/purge", authRequired, async (req: Request, res: Response) => {
+  const db = require("../db").default;
+  const { projectId, removeBackup } = req.body;
+  if (!projectId) throw new AppError(400, "缺少 projectId", "MISSING_PROJECT_ID");
+
+  // Verify project is soft-deleted
+  const project = await db.oneOrNone(
+    "SELECT id FROM analysis_projects WHERE id = $[id] AND deleted_at IS NOT NULL",
+    { id: projectId }
+  );
+  if (!project) throw new AppError(404, "项目不存在或未被软删除", "PROJECT_NOT_FOUND");
+
+  // Hard delete (CASCADE removes associated data)
+  await db.none("DELETE FROM analysis_projects WHERE id = $[id]", { id: projectId });
+
+  // Optionally remove backup file
+  if (removeBackup) {
+    const tenantId = getTenantId(req);
+    const backups = await listBackups(tenantId);
+    const match = backups.find((b: any) => b.projectId === projectId);
+    if (match) {
+      await removeBackupFile(match.filePath);
+    }
+  }
+
+  res.json({ purged: true });
+});
+
 export default router;
+

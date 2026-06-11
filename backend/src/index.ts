@@ -34,6 +34,7 @@ import authController from "./controllers/authController";
 import { authRequired } from "./middleware/auth";
 import { errorHandler } from "./middleware/errorHandler";
 import logger from "./utils/logger";
+import { ensureBackupDir, cleanExpiredBackups } from "./services/backupService";
 import { globalLimiter } from "./middleware/rateLimit";
 
 const app = express();
@@ -131,6 +132,20 @@ async function start() {
 
   // Connect Redis (non-fatal)
   await connectRedis();
+
+  // Initialize backup directory
+  try {
+    await ensureBackupDir();
+    // Run cleanup every 24 hours
+    setInterval(() => {
+      cleanExpiredBackups(config.backup.retentionDays).catch((err: any) =>
+        logger.error({ err }, "Backup cleanup failed")
+      );
+    }, 24 * 3600 * 1000);
+    logger.info({ dir: config.backup.dir, retentionDays: config.backup.retentionDays }, "Backup system initialized");
+  } catch (err: any) {
+    logger.error({ err }, "Backup system initialization failed");
+  }
 
   app.listen(config.port, () => {
     logger.info("=============================================");

@@ -121,3 +121,15 @@ export interface PointsPaginatedResponse {
   page: number;
   totalPages: number;
 }
+// Recycle bin / soft-delete
+export interface DeletedProject {
+  projectName: string
+  projectId: string
+  deletedAt: string
+  pointCount: number
+  filePath: string
+  expiresAt: string
+  daysRemaining: number
+  sourceCrs: string
+}
+

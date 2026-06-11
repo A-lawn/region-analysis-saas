@@ -88,6 +88,11 @@ docker compose up -d
 # 健康检查: http://localhost:3000/api/health
 ```
 
+> 首次部署或前端代码更新后需执行：
+> ```bash
+> cd frontend-vue && npm run build:deploy
+> ```
+
 ### 开发模式
 
 ```bash
@@ -213,4 +218,5 @@ cd frontend-vue && npx vue-tsc --noEmit
 - 健康检查增强：/api/health 含 DB + Redis 状态，/api/health/readiness 就绪探针
 - 前端设计系统升级：CSS tokens (tokens.css) + AppIcon SVG 图标组件
 - 报告导出路由加 authRequired 认证
+- 静态资源架构重构：Vite 构建产物回归 dist/，Nginx 简化为单前端 SPA
 - 商业可用度：~40%

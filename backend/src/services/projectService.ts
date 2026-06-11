@@ -119,7 +119,7 @@ export async function processUpload(
 }
 
 export async function getProjectSummary(projectId: string) {
-  const project = await db.oneOrNone("SELECT * FROM analysis_projects WHERE id = $1", [projectId]);
+  const project = await db.oneOrNone("SELECT * FROM analysis_projects WHERE id = $1 AND deleted_at IS NULL", [projectId]);
   if (!project) return null;
 
   const stats = await db.one(
@@ -158,7 +158,7 @@ export async function listProjects(
   const page = Math.max(opts?.page || 1, 1);
   const offset = (page - 1) * limit;
 
-  let whereClause = "WHERE tenant_id = $[tenantId]";
+  let whereClause = "WHERE tenant_id = $[tenantId] AND deleted_at IS NULL";
   const params: any = { tenantId, limit, offset };
 
   if (search) {
