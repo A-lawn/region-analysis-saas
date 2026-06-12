@@ -3,8 +3,8 @@ import { AppError } from "../middleware/errorHandler";
 
 export function validateCoverageParams(req: Request, _res: Response, next: NextFunction): void {
   const radius = parseInt(req.query.radius as string) || 3000;
-  if (radius < 500 || radius > 20000) {
-    throw new AppError(400, "半径必须在 500-20000 米之间", "INVALID_RADIUS");
+  if (radius < 50 || radius > 30000) {
+    throw new AppError(400, "半径必须在 50-30000 米之间", "INVALID_RADIUS");
   }
   next();
 }

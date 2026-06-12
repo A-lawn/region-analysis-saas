@@ -1,4 +1,4 @@
-﻿import apiClient from './client'
+import apiClient from './client'
 import type {
   UploadResult,
   ProjectSummary,
@@ -42,8 +42,12 @@ export async function getPoints(id: string, page = 1, limit = 500): Promise<Poin
   return data
 }
 
-export async function getCoverage(id: string, radius: number): Promise<CoverageResult> {
-  const { data } = await apiClient.get('/projects/' + id + '/analysis/coverage', { params: { radius } })
+export async function getCoverage(id: string, radius: number, decay?: boolean, whitespace?: boolean, clipGeojson?: any, networkMode?: string, industry?: string): Promise<CoverageResult> {
+  const params: any = { radius }
+  if (decay) params.decay = 'true'
+  if (whitespace) params.whitespace = 'true'
+  if (industry) params.industry = industry
+  const { data } = await apiClient.get('/projects/' + id + '/analysis/coverage', { params })
   return data
 }
 
@@ -76,6 +80,18 @@ export async function getH3Hexagons(id: string, resolution: number): Promise<{ h
 
 export async function getTaskStatus(taskId: string): Promise<TaskInfo> {
   const { data } = await apiClient.get('/tasks/' + taskId)
+  return data
+}
+
+
+export interface IndustryRadius {
+  industry: string
+  label: string
+  radiusMeters: number
+}
+
+export async function getIndustryRadii(): Promise<{ industries: IndustryRadius[] }> {
+  const { data } = await apiClient.get('/coverage/industry-radii')
   return data
 }
 

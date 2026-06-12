@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   modelValue: Record<string, number | null>
   headers: string[]
 }>()
@@ -42,12 +42,14 @@ const fields = [
   { key: 'addressCol', label: '地址', required: false },
   { key: 'lngCol', label: '经度', required: true },
   { key: 'latCol', label: '纬度', required: true },
+  { key: 'categoryCol', label: '类别', required: false },
+  { key: 'revenueCol', label: '营业额', required: false },
 ]
 
 function onChange(key: string, event: Event) {
   const val = (event.target as HTMLSelectElement).value
   emit('update:modelValue', {
-    ...((arguments[2] as any)?.modelValue || {}),
+    ...props.modelValue,
     [key]: val !== '' ? parseInt(val) : null,
   })
 }

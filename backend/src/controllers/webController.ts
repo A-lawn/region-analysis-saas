@@ -1,4 +1,4 @@
-﻿import { Router, Request, Response } from "express";
+import { Router, Request, Response } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { v4 as uuidv4 } from "uuid";
@@ -26,6 +26,7 @@ import { analysisLimiter } from "../middleware/rateLimit";
 
 import { validateProjectName } from "../validators/projectValidator";
 import { aggregateByH3 } from "../utils/h3Index";
+import { computeVoronoi } from "../services/voronoiService";
 import { getTaskStatus } from "../services/analysisService";
 import { backupProject, listBackups, restoreProject, removeBackupFile, ensureBackupDir } from "../services/backupService";
 
@@ -47,7 +48,7 @@ const upload = multer({
     if (ext.endsWith(".xlsx") || ext.endsWith(".xls") || ext.endsWith(".csv")) {
       cb(null, true);
     } else {
-      cb(new AppError(400, "鍙敮鎸?.xlsx, .xls, .csv 鏍煎紡", "INVALID_FILE_TYPE"));
+      cb(new AppError(400, "只支持 .xlsx, .xls, .csv 格式", "INVALID_FILE_TYPE"));
     }
   },
 });
@@ -57,7 +58,7 @@ const uploadSessions = new Map<string, { data: any[][]; headers: string[]; sourc
 
 // ---- POST /api/web/upload (auth required) ----
 router.post("/upload", authRequired, upload.single("file"), validateUpload, async (req: Request, res: Response) => {
-  if (!req.file) throw new AppError(400, "璇蜂笂浼燛xcel鏂囦欢", "FILE_REQUIRED");
+  if (!req.file) throw new AppError(400, "请上传Excel文件", "FILE_REQUIRED");
 
   const sourceCrs = (req.body.source_crs || "gcj02") as CrsType;
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -65,7 +66,7 @@ router.post("/upload", authRequired, upload.single("file"), validateUpload, asyn
   const sheet = workbook.Sheets[sheetName];
   const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-  if (data.length < 2) throw new AppError(400, "Excel至少需要包含标题行和一行数据", "INSUFFICIENT_DATA");
+  if (data.length < 2) throw new AppError(400, "Excel文件需要至少包含两行数据", "INSUFFICIENT_DATA");
 
   const headers = data[0].map((h: any) => String(h || ""));
   const rows = data.slice(1);
@@ -111,24 +112,24 @@ router.post("/upload/confirm", authRequired, validateProjectName, async (req: Re
   const { uploadId, columnMapping } = req.body;
 
   if (!columnMapping || columnMapping.lngCol === null || columnMapping.latCol === null) {
-    throw new AppError(400, "蹇呴』鎸囧畾缁忓害鍜岀含搴﹀垪", "MISSING_COORD_COLUMNS");
+    throw new AppError(400, "必须指定经度和纬度列", "MISSING_COORD_COLUMNS");
   }
 
   const session = uploadSessions.get(uploadId);
-  if (!session) throw new AppError(400, "上传会话已过期,请重新上传文件", "SESSION_EXPIRED");
+  if (!session) throw new AppError(400, "上传会话已过期，请重新上传文件", "SESSION_EXPIRED");
 
   const result = await processUpload(
     session.data,
     columnMapping,
     session.sourceCrs as CrsType,
-    session.fileName || "瀵煎叆_" + new Date().toISOString().slice(0, 10),
+    session.fileName || "导入_" + new Date().toISOString().slice(0, 10),
     getTenantId(req)
   );
 
   uploadSessions.delete(uploadId);
 
   if (!result.projectId) {
-    throw new AppError(400, result.errors.join("; ") || "鏁版嵁瀵煎叆澶辫触", "IMPORT_FAILED");
+    throw new AppError(400, result.errors.join("; ") || "数据导入失败", "IMPORT_FAILED");
   }
 
   res.json({
@@ -159,7 +160,30 @@ router.get("/projects/:id/summary", authRequired, async (req: Request, res: Resp
 // ---- Analysis endpoints (auth required) ----
 router.get("/projects/:id/analysis/coverage", authRequired, analysisLimiter, validateCoverageParams, async (req: Request, res: Response) => {
   const radius = parseInt(req.query.radius as string) || config.analysis.coverageRadii[0];
-  res.json(await computeCoverage(req.params.id, radius));
+  const decayMode = req.query.decay === "true" || req.query.decay === "1";
+  const includeWhiteSpace = req.query.whitespace === "true" || req.query.whitespace === "1";
+  const rawNetwork = req.query.network as string; const networkMode: "walking" | "driving" | undefined = rawNetwork === "walking" ? "walking" : rawNetwork === "driving" ? "driving" : undefined;
+  let clipGeojson: any = undefined;
+  if (req.query.clip) { try { clipGeojson = JSON.parse(req.query.clip as string); } catch {} }
+
+  const industry = req.query.industry as string || undefined;
+    const opts = { decayMode, includeWhiteSpace, clipGeojson, networkMode, industry };
+
+  // For large datasets (>500 points), use async task queue to avoid timeout
+  const db = require("../db").default;
+  const cntRow = await db.oneOrNone(
+    "SELECT COUNT(*)::INTEGER AS cnt FROM spatial_points WHERE project_id = $[pid]",
+    { pid: req.params.id }
+  );
+  const pointCount = cntRow?.cnt || 0;
+
+  if (pointCount > 500) {
+    const { submitAnalysis } = require("../services/analysisService");
+    const { taskId } = await submitAnalysis("coverage", req.params.id, { radius, ...opts });
+    res.json({ taskId, status: "queued" });
+  } else {
+    res.json(await computeCoverage(req.params.id, radius, opts));
+  }
 });
 
 router.get("/projects/:id/analysis/heatmap", authRequired, analysisLimiter, validateHeatmapParams, async (req: Request, res: Response) => {
@@ -185,9 +209,9 @@ router.post("/projects/:id/analysis/site-optimization", authRequired, analysisLi
 // ---- POST /api/web/geocode (auth required) ----
 router.post("/geocode", authRequired, async (req: Request, res: Response) => {
   const { address } = req.body;
-  if (!address) throw new AppError(400, "璇锋彁渚涘湴鍧€", "ADDRESS_REQUIRED");
+  if (!address) throw new AppError(400, "请提供地址", "ADDRESS_REQUIRED");
   const result = await geocode(address);
-  if (!result) throw new AppError(404, "鍦板潃瑙ｆ瀽澶辫触锛岃妫€鏌ュ湴鍧€鏄惁姝ｇ‘", "GEOCODE_FAILED");
+  if (!result) throw new AppError(404, "地址解析失败，请检查地址是否正确", "GEOCODE_FAILED");
   res.json(result);
 });
 
@@ -197,7 +221,7 @@ router.post("/reverse-geocode", authRequired, async (req: Request, res: Response
   if (lng == null || lat == null) throw new AppError(400, "请提供坐标", "COORDS_REQUIRED");
   const { reverseGeocode } = require("../services/geocodingService");
   const address = await reverseGeocode(lng, lat);
-  if (!address) throw new AppError(404, "鍙嶅悜鍦板潃瑙ｆ瀽澶辫触", "REVERSE_GEOCODE_FAILED");
+  if (!address) throw new AppError(404, "反向地址解析失败", "REVERSE_GEOCODE_FAILED");
   res.json({ lng, lat, address });
 });
 
@@ -236,6 +260,12 @@ router.get("/projects/:id/points", authRequired, async (req: Request, res: Respo
   res.json({ points: displayPoints, total: countResult.total, page, totalPages: Math.ceil(countResult.total / limit) });
 });
 
+// ---- GET /api/web/projects/:id/analysis/voronoi (auth required) ----
+router.get("/projects/:id/analysis/voronoi", authRequired, async (req: Request, res: Response) => {
+  const polygons = await computeVoronoi(req.params.id);
+  res.json({ polygons });
+});
+
 // ---- GET /api/web/projects/:id/analysis/h3-hexagons (auth required) ----
 router.get("/projects/:id/analysis/h3-hexagons", authRequired, async (req: Request, res: Response) => {
   const resolution = parseInt(req.query.resolution as string) || 9;
@@ -252,10 +282,39 @@ router.get("/projects/:id/analysis/h3-hexagons", authRequired, async (req: Reque
   res.json({ hexagons, resolution });
 });
 
+// ---- GET /api/web/coverage/industry-radii (auth required) ----
+router.get("/coverage/industry-radii", authRequired, async (_req: Request, res: Response) => {
+  try {
+    const db = require("../db").default;
+    const rows = await db.manyOrNone(
+      "SELECT industry, display_name AS label, COALESCE(radius_meters, 1000) AS radius_meters FROM site_optimization_models ORDER BY radius_meters"
+    );
+    if (rows && rows.length > 0) {
+      return res.json({
+        industries: rows.map((r: any) => ({
+          industry: r.industry,
+          label: r.label,
+          radiusMeters: parseInt(r.radius_meters),
+        })),
+        source: "database",
+      });
+    }
+  } catch (e: any) {
+    console.warn("[industry-radii] DB query failed, using config fallback:", e.message);
+  }
+  // Fallback to hardcoded config
+  const industries = config.coverage.industryRadii.map(r => ({
+    industry: r.industry,
+    label: r.label,
+    radiusMeters: r.radiusMeters,
+  }));
+  res.json({ industries, source: "config" });
+});
+
 // ---- GET /api/web/tasks/:taskId (auth required) ----
 router.get("/tasks/:taskId", authRequired, async (req: Request, res: Response) => {
   const task = getTaskStatus(req.params.taskId);
-  if (!task) throw new AppError(404, "任务不存在或已过期", "TASK_NOT_FOUND");
+  if (!task) throw new AppError(404, "任务不存在", "TASK_NOT_FOUND");
   res.json(task);
 });
 
@@ -270,7 +329,7 @@ router.get("/industries", authRequired, async (_req: Request, res: Response) => 
 router.get("/industries/:id/model", authRequired, async (req: Request, res: Response) => {
   const db = require("../db").default;
   const model = await db.oneOrNone("SELECT id, industry, display_name, weights, description FROM site_optimization_models WHERE id = $[id]", { id: req.params.id });
-  if (!model) throw new AppError(404, "行业模型不存在", "MODEL_NOT_FOUND");
+  if (!model) throw new AppError(404, "模型不存在", "MODEL_NOT_FOUND");
   res.json(model);
 });
 
@@ -315,7 +374,7 @@ router.post("/projects/:id/restore", authRequired, async (req: Request, res: Res
   const tenantId = getTenantId(req);
   const backups = await listBackups(tenantId);
   const match = backups.find((b: any) => b.projectId === req.body.projectId);
-  if (!match) throw new AppError(404, "未找到该项目的备份文件", "BACKUP_NOT_FOUND");
+  if (!match) throw new AppError(404, "未找到项目备份文件", "BACKUP_NOT_FOUND");
 
   const result = await restoreProject(match.filePath);
   // Remove backup file so it no longer appears in recycle bin
@@ -334,7 +393,7 @@ router.delete("/projects/deleted/purge", authRequired, async (req: Request, res:
     "SELECT id FROM analysis_projects WHERE id = $[id] AND deleted_at IS NOT NULL",
     { id: projectId }
   );
-  if (!project) throw new AppError(404, "项目不存在或未被软删除", "PROJECT_NOT_FOUND");
+  if (!project) throw new AppError(404, "项目不存在或未删除", "PROJECT_NOT_FOUND");
 
   // Hard delete (CASCADE removes associated data)
   await db.none("DELETE FROM analysis_projects WHERE id = $[id]", { id: projectId });
@@ -352,5 +411,60 @@ router.delete("/projects/deleted/purge", authRequired, async (req: Request, res:
   res.json({ purged: true });
 });
 
-export default router;
 
+// ---- GET /projects/:id/analysis/coverage/export (auth required) ----
+router.get("/projects/:id/analysis/coverage/export", authRequired, analysisLimiter, async (req: Request, res: Response) => {
+  const radius = parseInt(req.query.radius as string) || config.analysis.coverageRadii[0];
+  const decayMode = req.query.decay === "true" || req.query.decay === "1";
+  const includeWhiteSpace = req.query.whitespace === "true" || req.query.whitespace === "1";
+  const rawNetwork = req.query.network as string;
+  const networkMode: "walking" | "driving" | undefined = rawNetwork === "walking" ? "walking" : rawNetwork === "driving" ? "driving" : undefined;
+  const format = (req.query.format as string) || "geojson";
+
+  const industry = req.query.industry as string || undefined;
+  const opts = { decayMode, includeWhiteSpace, networkMode, industry };
+  const result = await computeCoverage(req.params.id, radius, opts);
+
+  if (format === "excel") {
+    const rows: Record<string, any>[] = [{
+      "覆盖面积(km²)": ((result.coveredArea || 0) / 1000000).toFixed(2),
+      "分布范围面积(km²)": ((result.hullArea || 0) / 1000000).toFixed(2),
+      "总缓冲区面积(km²)": ((result.totalBufferArea || 0) / 1000000).toFixed(2),
+      ...(result.effectiveCoveredArea != null ? { "有效覆盖面积(km²)": ((result.effectiveCoveredArea || 0) / 1000000).toFixed(2) } : {}),
+      ...(result.effectiveCoverageRatio != null ? { "有效覆盖率(%)": result.effectiveCoverageRatio } : {}),
+      ...(result.cannibalizationIndex != null ? { "蚕食指数(%)": result.cannibalizationIndex } : {}),
+    }];
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "覆盖分析");
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="coverage_${req.params.id}.xlsx"`);
+    return res.send(Buffer.from(buf));
+  }
+
+  // Default: GeoJSON export
+  const exportGeojson: any = {
+    type: "FeatureCollection",
+    features: [
+      result.geojson?.covered ? { type: "Feature", properties: { name: "覆盖区域" }, geometry: result.geojson.covered } : null,
+      result.geojson?.uncovered ? { type: "Feature", properties: { name: "盲区" }, geometry: result.geojson.uncovered } : null,
+      result.overlapGeojson?.single ? { type: "Feature", properties: { name: "独家覆盖" }, geometry: result.overlapGeojson.single } : null,
+      result.overlapGeojson?.double ? { type: "Feature", properties: { name: "双重覆盖" }, geometry: result.overlapGeojson.double } : null,
+      result.overlapGeojson?.triplePlus ? { type: "Feature", properties: { name: "三重及以上" }, geometry: result.overlapGeojson.triplePlus } : null,
+      result.whiteSpaceGeojson ? { type: "Feature", properties: { name: "白空间" }, geometry: result.whiteSpaceGeojson } : null,
+    ].filter(Boolean),
+  };
+  if (result.decayBreakdown) {
+    for (const z of result.decayBreakdown) {
+      if (z.geojson) {
+        exportGeojson.features.push({ type: "Feature", properties: { name: z.zone }, geometry: z.geojson });
+      }
+    }
+  }
+  res.setHeader("Content-Type", "application/geo+json");
+  res.setHeader("Content-Disposition", `attachment; filename="coverage_${req.params.id}.geojson"`);
+  return res.json(exportGeojson);
+});
+
+export default router;

@@ -7,6 +7,7 @@ export interface DecisionRule {
 
 export interface AnalysisContext {
   coverageRatio?: number;
+  triangulation?: { coverageConnectivity?: number; overlapRatio?: number; gapRatio?: number; totalEdges?: number; connectedEdges?: number; gappedEdges?: number; minEdgeM?: number; maxEdgeM?: number; avgEdgeM?: number };
   noiseRatio?: number;
   clusterCount?: number;
   pointCount?: number;
@@ -14,7 +15,6 @@ export interface AnalysisContext {
   competitorGapRatio?: number;
   isConcentrated?: boolean;
 }
-
 export interface DecisionAdvice {
   priority: "high" | "medium" | "low";
   message: string;
@@ -23,8 +23,8 @@ export interface DecisionAdvice {
 const rules: DecisionRule[] = [
   {
     id: "low-coverage",
-    condition: (c) => (c.coverageRatio ?? 100) < 60,
-    message: "存在显著服务盲区，建议优先填补未覆盖区域",
+    condition: (c) => (c.triangulation?.gapRatio ?? 0) > 30 && (c.pointCount ?? 0) >= 3,
+    message: "存在显著服务盲区（门店间距过大），建议优先填补未覆盖区域",
     priority: "high",
   },
   {
@@ -35,7 +35,7 @@ const rules: DecisionRule[] = [
   },
   {
     id: "high-concentration",
-    condition: (c) => (c.isConcentrated ?? false) && (c.coverageRatio ?? 100) < 70,
+    condition: (c) => (c.isConcentrated ?? false) && (c.triangulation?.gapRatio ?? 0) > 30,
     message: "服务高度集中，外围存在大量未服务人群，建议向外扩展",
     priority: "high",
   },
@@ -62,7 +62,7 @@ const rules: DecisionRule[] = [
   },
   {
     id: "market-saturated",
-    condition: (c) => (c.competitorGapRatio ?? 1) < 0.5 && (c.coverageRatio ?? 0) > 70,
+    condition: (c) => (c.competitorGapRatio ?? 1) < 0.5 && (c.triangulation?.gapRatio ?? 100) < 30,
     message: "市场趋于饱和（竞品密集且自身覆盖率高），建议差异化选址",
     priority: "high",
   },
@@ -70,6 +70,12 @@ const rules: DecisionRule[] = [
     id: "market-underserved",
     condition: (c) => (c.competitorGapRatio ?? 1) > 2,
     message: "竞品缺口显著，该区域存在明显市场机会",
+    priority: "high",
+  },
+  {
+    id: "high-overlap",
+    condition: (c) => (c.triangulation?.overlapRatio ?? 0) > 50 && (c.pointCount ?? 0) >= 3,
+    message: "门店间服务区严重重叠（重叠率 > 50%），建议优化间距或关闭冗余门店",
     priority: "high",
   },
   {

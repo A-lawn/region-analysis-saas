@@ -126,21 +126,69 @@ CREATE TABLE IF NOT EXISTS site_optimization_models (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 预置三个行业模型
-INSERT INTO site_optimization_models (industry, display_name, weights, description, is_default) VALUES
+-- 预置五个行业模型 (algorithm + kpi_mapping 格式)
+INSERT INTO site_optimization_models (industry, display_name, weights, description, is_default, radius_meters) VALUES
 ('convenience', '便利店',
- '{"walkableRatio": 0.40, "competitorAvoidance": 0.25, "poiDensity": 0.20, "rentFactor": 0.15}',
+ '{"algorithm":"weighted_sum","kpi_mapping":{"walkableRatio":0.40,"competitorAvoidance":0.25,"poiDensity":0.20,"rentFactor":0.15}}',
  '便利店选址：步行可达优先，回避已有竞品，关注周边人口密度',
- true),
+ true, 300),
 ('restaurant', '餐饮',
- '{"footTraffic": 0.35, "visibility": 0.25, "competitionDensity": 0.20, "deliveryCoverage": 0.20}',
+ '{"algorithm":"weighted_sum","kpi_mapping":{"footTraffic":0.35,"visibility":0.25,"competitionDensity":0.20,"deliveryCoverage":0.20}}',
  '餐饮选址：客流热度与可见度优先，竞争适中最优，关注外卖覆盖范围',
- true),
+ true, 500),
 ('pharmacy', '药店/诊所',
- '{"populationStructure": 0.30, "medicalCoverage": 0.25, "competitorDistance": 0.20, "transportConvenience": 0.15, "policyCompliance": 0.10}',
+ '{"algorithm":"weighted_sum","kpi_mapping":{"populationStructure":0.30,"medicalCoverage":0.25,"competitorDistance":0.20,"transportConvenience":0.15,"policyCompliance":0.10}}',
  '药店选址：人口结构与医保覆盖优先，竞品距离越远越好，关注政策合规',
- true)
-ON CONFLICT (industry) DO NOTHING;
+ true, 800),
+('supermarket', '商超',
+ '{"algorithm":"weighted_sum","kpi_mapping":{"populationDensity":0.30,"trafficAccessibility":0.25,"competitorDistance":0.20,"parkingAvailability":0.15,"rentLevel":0.10}}',
+ '商超选址：人口密度与交通可达性优先，回避竞品，关注停车位与租金',
+ true, 3000),
+('auto4s', '汽车4S店',
+ '{"algorithm":"weighted_sum","kpi_mapping":{"roadFrontage":0.25,"landAvailability":0.25,"competitorClustering":0.20,"regionalCarOwnership":0.20,"zoningCompliance":0.10}}',
+ '汽车4S店选址：临路面宽与地块面积优先，产业集群效应明显，关注区域保有量',
+ true, 10000)
+ON CONFLICT (industry) DO UPDATE SET
+  weights = EXCLUDED.weights,
+  description = EXCLUDED.description,
+  radius_meters = EXCLUDED.radius_meters;
+
+-- KPI 分类映射表（覆盖选址评分 + 覆盖范围分析通用）
+CREATE TABLE IF NOT EXISTS kpi_category_map (
+  kpi_name VARCHAR(64) PRIMARY KEY,
+  category VARCHAR(20) NOT NULL CHECK (category IN ('reach', 'competition', 'density', 'site')),
+  display_name VARCHAR(100),
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO kpi_category_map (kpi_name, category, display_name, description) VALUES
+  ('walkableRatio',        'reach',       '步行可达比',   '500m步行范围内覆盖居民比例'),
+  ('footTraffic',          'reach',       '客流热度',     '周边日均人流量指数'),
+  ('visibility',           'reach',       '可见度',       '门店临街面数及视距评分'),
+  ('competitorAvoidance',  'competition', '竞品回避',     '周边竞品门店数反比'),
+  ('competitionDensity',   'competition', '竞争密度',     '区域内同业态门店密度'),
+  ('competitorDistance',   'competition', '竞品距离',     '最近竞品门店距离(m)'),
+  ('competitorClustering', 'competition', '产业集群度',   '同业聚集程度'),
+  ('populationStructure',  'density',     '人口结构',     '年龄/收入/家庭结构适配度'),
+  ('populationDensity',    'density',     '人口密度',     '常住人口密度(人/km²)'),
+  ('poiDensity',           'density',     '商业密度',     '周边POI数量'),
+  ('deliveryCoverage',     'density',     '外卖覆盖',     '3km内外卖配送覆盖率'),
+  ('medicalCoverage',      'density',     '医保覆盖',     '周边医保定点机构密度'),
+  ('trafficAccessibility', 'density',     '交通可达',     '公交/地铁站点数量'),
+  ('regionalCarOwnership', 'density',     '汽车保有量',   '区域百人汽车保有量'),
+  ('parkingAvailability',  'density',     '停车配套',     '500m内停车位数'),
+  ('rentFactor',           'site',        '租金系数',     '单位面积租金/区域均价'),
+  ('rentLevel',            'site',        '租金水平',     '周边商铺租金等级'),
+  ('roadFrontage',         'site',        '临路面宽',     '地块临主干道面宽(m)'),
+  ('landAvailability',     'site',        '地块面积',     '可开发用地面积(m²)'),
+  ('zoningCompliance',     'site',        '规划合规',     '用地性质与规划匹配度'),
+  ('policyCompliance',     'site',        '政策合规',     '行业许可及监管政策契合度'),
+  ('transportConvenience', 'site',        '交通便利',     '距地铁/高架/快速路距离')
+ON CONFLICT (kpi_name) DO UPDATE SET
+  category = EXCLUDED.category,
+  display_name = EXCLUDED.display_name,
+  description = EXCLUDED.description;
 
 -- 数据来源标记（自有 vs 竞品）
 ALTER TABLE spatial_points ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'owner';

@@ -53,12 +53,47 @@ export interface UploadResult {
   preview: any[]
 }
 
+export interface DecayZone {
+  zone: string
+  areaSqm: number
+  weight: number
+  geojson?: any
+}
+export interface OverlapLayers {
+  single: number
+  double: number
+  triplePlus: number
+}
+export interface TriangulationMetrics {
+  coverageConnectivity: number
+  overlapRatio: number
+  gapRatio: number
+  totalEdges: number
+  connectedEdges: number
+  gappedEdges: number
+  minEdgeM: number
+  maxEdgeM: number
+  avgEdgeM: number
+}
+
 export interface CoverageResult {
   coveredArea: number
+  bufferUnionArea: number
   totalBufferArea: number
+  hullArea: number
   uncoveredArea: number
-  coverageRatio: number
+  triangulation?: TriangulationMetrics
+  hullType?: 'concave' | 'convex_fallback'
+  clipAreaSqm?: number
+  networkFallback?: boolean
   geojson: any
+  decayBreakdown?: DecayZone[]
+  effectiveCoveredArea?: number
+  effectiveCoverageRatio?: number
+  overlapLayers?: OverlapLayers
+  cannibalizationIndex?: number
+  advice?: { priority: string; message: string }[]
+  whiteSpaceGeojson?: any
 }
 
 export interface HeatmapPoint {
@@ -83,7 +118,7 @@ export interface SiteCandidate {
   lat: number
   score: number
   dimensions: Record<string, number>
-  advice?: { message: string; priority: 'high' | 'medium' | 'low' }[]
+  advice?: { message: string; priority: "high" | "medium" | "low" }[]
 }
 
 export interface SiteOptimizationResult {
@@ -100,7 +135,7 @@ export interface H3Hexagon {
 
 export interface TaskInfo {
   taskId: string
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: "queued" | "running" | "completed" | "failed"
   result?: any
   error?: string
 }
@@ -112,7 +147,7 @@ export interface UserInfo {
   role: string
 }
 
-export type CrsType = 'wgs84' | 'gcj02' | 'bd09'
+export type CrsType = "wgs84" | "gcj02" | "bd09"
 
 // Paginated points response (2.4)
 export interface PointsPaginatedResponse {
@@ -132,4 +167,3 @@ export interface DeletedProject {
   daysRemaining: number
   sourceCrs: string
 }
-

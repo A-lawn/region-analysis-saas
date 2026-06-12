@@ -5,18 +5,18 @@ import { pointToH3 } from "../utils/h3Index";
 
 const pgp = pgPromise();
 
-export interface ExcelRow { name: string; address: string; lng: number; lat: number; }
+export interface ExcelRow { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; }
 export interface UploadResult { projectId: string; rowsParsed: number; rowsInserted: number; errors: string[]; }
 
 export async function processUpload(
   rows: any[][],
-  columnMapping: { nameCol: number | null; addressCol: number | null; lngCol: number; latCol: number },
+  columnMapping: { nameCol: number | null; addressCol: number | null; lngCol: number; latCol: number; categoryCol?: number | null; revenueCol?: number | null },
   sourceCrs: CrsType,
   projectName: string,
   tenantId: string = "default"
 ): Promise<UploadResult> {
   const errors: string[] = [];
-  const points: { name: string; address: string; lng: number; lat: number }[] = [];
+  const points: { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number }[] = [];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -28,7 +28,9 @@ export async function processUpload(
 
     const name = columnMapping.nameCol !== null ? String(row[columnMapping.nameCol] || "").trim() : "Point" + (i + 1);
     const address = columnMapping.addressCol !== null ? String(row[columnMapping.addressCol] || "").trim() : "";
-    points.push({ name, address, lng: rawLng, lat: rawLat });
+            const category = columnMapping.categoryCol != null ? String(row[columnMapping.categoryCol] || '').trim() : '';
+    const revenue = columnMapping.revenueCol != null ? parseFloat(row[columnMapping.revenueCol]) || 0 : 0;
+    points.push({ name, address, lng: rawLng, lat: rawLat, category, revenue });
   }
 
   if (points.length === 0) {
@@ -52,10 +54,12 @@ export async function processUpload(
 
     // 2.3 Batch insert in chunks. Insert lng/lat first, then bulk-update geom+h3.
   const BATCH_SIZE = 2000;
-  const cs = new pgp.helpers.ColumnSet(
-    ["project_id", "name", "address", "lng", "lat"],
-    { table: "spatial_points" }
-  );
+    // Include metadata column if any point has category or revenue
+  const hasCategory = points.some((p: any) => p.category || p.revenue);
+  const columns = hasCategory
+    ? ["project_id", "name", "address", "lng", "lat", { name: "metadata", mod: ":json" }]
+    : ["project_id", "name", "address", "lng", "lat"];
+  const cs = new pgp.helpers.ColumnSet(columns, { table: "spatial_points" });
 
   // Points are already in WGS-84 from step above, no further conversion needed
 
@@ -66,14 +70,29 @@ export async function processUpload(
     const p = points[i];
     const c = convertedPoints[i];
     if (isNaN(c.lng) || isNaN(c.lat) || !isFinite(c.lng) || !isFinite(c.lat)) continue;
-    batch.push({
+    const row: any = {
       project_id: project.id,
       name: p.name,
       address: p.address,
       lng: c.lng,
       lat: c.lat,
-    });
-    inserted++;
+    };
+    if (hasCategory) {
+      const meta: Record<string, any> = {};
+      const cat = (p as any).category;
+      if (cat) {
+        if (cat.includes("药")) meta.industry = "pharmacy";
+        else if (cat.includes("便利") || cat.includes("零售")) meta.industry = "convenience";
+        else if (cat.includes("餐饮") || cat.includes("美食") || cat.includes("火锅")) meta.industry = "restaurant";
+        else if (cat.includes("商超") || cat.includes("超市") || cat.includes("百货")) meta.industry = "supermarket";
+        else if (cat.includes("汽车") || cat.includes("4S")) meta.industry = "auto4s";
+      }
+      const rev = (p as any).revenue;
+      if (rev && rev > 0) meta.dailyRevenue = Math.round(rev);
+      if (Object.keys(meta).length > 0) row.metadata = meta;
+    }
+    batch.push(row);
+        inserted++;
 
     if (batch.length >= BATCH_SIZE) {
       const query = pgp.helpers.insert(batch, cs);

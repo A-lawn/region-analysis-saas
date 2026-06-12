@@ -47,12 +47,12 @@
             <template v-if="activeTab === 'h3'">
               密度
               <span class="legend-item"><span class="legend-swatch" style="background:#91CF60"></span>低</span>
-              <span class="legend-item"><span class="legend-swatch" style="background:#FEE08B"></span></span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#FEE08B"></span>中</span>
               <span class="legend-item"><span class="legend-swatch" style="background:#D73027"></span>高</span>
             </template>
             <template v-if="activeTab === 'site'">
-              <span class="legend-item"><span class="legend-dot" style="background:var(--color-error)"></span>第1</span>
-              <span class="legend-item"><span class="legend-dot" style="background:var(--color-warning)"></span>第2-3</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--color-error)"></span>问题站点</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--color-warning)"></span>潜在问题站点</span>
               <span class="legend-item"><span class="legend-dot" style="background:var(--color-accent)"></span>其他</span>
             </template>
           </div>
@@ -139,23 +139,117 @@ function goReport() {
   router.push({ name: 'report', params: { id: projectId } })
 }
 
-function handleCoverage(data: any) {
+function handleCoverage(data: any, voronoiData?: any) {
   clearOverlays()
-  // Backend returns { geojson: { covered, uncovered }, coverageRatio, ... }
-  // ST_AsGeoJSON returns Feature objects; extract .geometry for addGeoJSONPolygons
+  if (!data) return
+  // If data is a task response (queued), ignore it
+  if (data.taskId && data.status === 'queued') return
+  const hasVoronoi = voronoiData?.polygons?.length > 0
+
+  // Multi-radius mode: data is an array of CoverageResult
+  if (Array.isArray(data)) {
+    const results = data as any[]
+    let anyCovered = false
+    const greenAlphas = [0.2, 0.35, 0.5]
+    const redAlphas = [0.12, 0.2, 0.28]
+    for (let i = 0; i < results.length; i++) {
+      const item = results[i]
+      const geojson = item.geojson || {}
+      let covered = geojson.covered || item.coveredPolygons
+      let uncovered = geojson.uncovered || item.gapPolygons
+      if (covered && covered.type === 'Feature') covered = covered.geometry
+      if (uncovered && uncovered.type === 'Feature') uncovered = uncovered.geometry
+      if (covered) {
+        addGeoJSONPolygons(covered, 'rgba(52,199,89,' + greenAlphas[i] + ')', '#34C759')
+        anyCovered = true
+      }
+      if (uncovered && uncovered.coordinates && uncovered.coordinates.length) {
+        addGeoJSONPolygons(uncovered, 'rgba(255,59,48,' + redAlphas[i] + ')', '#FF3B30')
+      }
+    }
+    const lastItem = results[results.length - 1]
+    const wsGeojson = lastItem?.whiteSpaceGeojson
+    if (wsGeojson && wsGeojson.coordinates && wsGeojson.coordinates.length) {
+      addGeoJSONPolygons(wsGeojson, 'rgba(0,122,255,0.12)', '#007AFF')
+    }
+    if (hasVoronoi) {
+      const pal = voronoiPalette()
+      voronoiData.polygons.forEach((p: any, i: number) => {
+        try {
+          let geom = typeof p.geojson === 'string' ? JSON.parse(p.geojson) : p.geojson
+          if (geom?.type === 'Feature') geom = geom.geometry
+          if (geom?.coordinates?.length) {
+            const [fill, stroke] = pal[i % pal.length]
+            addGeoJSONPolygons(geom, fill, stroke, 0.25)
+          }
+        } catch {}
+      })
+    }
+    if (!anyCovered && !wsGeojson && !hasVoronoi) show('未检测到覆盖数据', 'info')
+    return
+  }
+
+  // Single-radius mode: data is a CoverageResult object
+  let covered: any = null
   const geojson = data.geojson || {}
-  let covered = geojson.covered || data.coveredPolygons
+  covered = geojson.covered || data.coveredPolygons
   let uncovered = geojson.uncovered || data.gapPolygons
-  
-  // Unwrap Feature -> geometry if needed
+
   if (covered && covered.type === 'Feature') covered = covered.geometry
   if (uncovered && uncovered.type === 'Feature') uncovered = uncovered.geometry
-  
+
   if (covered) addGeoJSONPolygons(covered, 'rgba(52,199,89,0.35)', '#34C759')
-  if (uncovered) addGeoJSONPolygons(uncovered, 'rgba(255,59,48,0.2)', '#FF3B30')
-  if (!covered && !uncovered) show('未检测到覆盖数据', 'info')
+  if (uncovered && uncovered.coordinates && uncovered.coordinates.length) {
+    addGeoJSONPolygons(uncovered, 'rgba(255,59,48,0.2)', '#FF3B30')
+  }
+
+  // Overlap layers overlay (always show, even with Voronoi)
+  if (data.overlapGeojson) {
+    const ol = data.overlapGeojson
+    if (ol.triplePlus && ol.triplePlus.coordinates && ol.triplePlus.coordinates.length) {
+      addGeoJSONPolygons(ol.triplePlus, 'rgba(255,59,48,0.3)', '#FF3B30', 0.5)
+    }
+    if (ol.double && ol.double.coordinates && ol.double.coordinates.length) {
+      addGeoJSONPolygons(ol.double, 'rgba(255,149,0,0.25)', '#FF9500', 0.4)
+    }
+    if (ol.single && ol.single.coordinates && ol.single.coordinates.length) {
+      addGeoJSONPolygons(ol.single, 'rgba(52,199,89,0.2)', '#34C759', 0.3)
+    }
+  }
+
+  // White space overlay
+  const wsGeojson = data.whiteSpaceGeojson
+  if (wsGeojson && wsGeojson.coordinates && wsGeojson.coordinates.length) {
+    addGeoJSONPolygons(wsGeojson, 'rgba(0,122,255,0.12)', '#007AFF')
+  }
+
+  // Voronoi overlay (shown on top of coverage base layer)
+  if (hasVoronoi) {
+    const pal = voronoiPalette()
+    voronoiData.polygons.forEach((p: any, i: number) => {
+      try {
+        let geom = typeof p.geojson === 'string' ? JSON.parse(p.geojson) : p.geojson
+        if (geom?.type === 'Feature') geom = geom.geometry
+        if (geom?.coordinates?.length) {
+          const [fill, stroke] = pal[i % pal.length]
+          addGeoJSONPolygons(geom, fill, stroke, 0.25)
+        }
+      } catch {}
+    })
+  }
+
+  if (!covered && !wsGeojson && !hasVoronoi) show('未检测到覆盖数据', 'info')
 }
 
+function voronoiPalette(): string[][] {
+  return [
+    ['rgba(0,122,255,0.18)', '#007AFF'], ['rgba(52,199,89,0.18)', '#34C759'],
+    ['rgba(255,149,0,0.18)', '#FF9500'], ['rgba(255,59,48,0.15)', '#FF3B30'],
+    ['rgba(175,82,222,0.18)', '#AF52DE'], ['rgba(90,200,250,0.18)', '#5AC8FA'],
+    ['rgba(255,204,0,0.18)', '#FFCC00'], ['rgba(142,142,147,0.18)', '#8E8E93'],
+    ['rgba(52,120,246,0.18)', '#3478F6'], ['rgba(48,219,176,0.18)', '#30DBB0'],
+  ]
+}
 function handleHeatmap(data: { points: HeatmapPoint[] }) {
   clearOverlays()
   if (data.points?.length) addHeatmapLayer(data.points)

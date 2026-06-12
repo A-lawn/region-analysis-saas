@@ -23,8 +23,7 @@ const worker = new Worker<AnalysisJobData, AnalysisJobResult>(
     try {
       let result: any;
       switch (type) {
-        case "coverage":
-          result = await processCoverageJob({ projectId, radiusMeters: params.radius || 3000 });
+        case "coverage": result = await processCoverageJob({ projectId, radiusMeters: params.radius || 3000, opts: params as any });
           break;
         case "heatmap":
           result = await processHeatmapJob({

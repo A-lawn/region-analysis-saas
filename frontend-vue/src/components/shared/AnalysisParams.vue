@@ -50,6 +50,7 @@ export interface AnalysisParam {
 const props = defineProps<{
   params: AnalysisParam[]
   runLabel?: string
+  modelValue?: Record<string, number>
 }>()
 
 const emit = defineEmits<{
@@ -64,11 +65,26 @@ watch(
   (p) => {
     for (const param of p) {
       if (!(param.key in values)) {
-        values[param.key] = param.default
+        values[param.key] = props.modelValue?.[param.key] ?? param.default
       }
     }
   },
   { immediate: true }
+)
+
+// Sync external modelValue changes to internal slider position
+watch(
+  () => props.modelValue,
+  (mv) => {
+    if (mv) {
+      for (const [k, v] of Object.entries(mv)) {
+        if (k in values) {
+          values[k] = v
+        }
+      }
+    }
+  },
+  { deep: true }
 )
 
 function onRangeChange(key: string, e: Event) {

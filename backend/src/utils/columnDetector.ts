@@ -4,10 +4,12 @@
  */
 
 export interface DetectedColumns {
-  nameCol: number | null;     // 0-based index
+  nameCol: number | null;
   addressCol: number | null;
   lngCol: number | null;
   latCol: number | null;
+  categoryCol: number | null;
+  revenueCol: number | null;
   headers: string[];
 }
 
@@ -31,6 +33,14 @@ const COMBINED_COORD_PATTERNS = [
   /^(坐标|coord|coordinate|position|point|点位)/i,
 ];
 
+const CATEGORY_PATTERNS = [
+  /^(类别|分类|行业|业态|category|type|industry|品类)/i,
+];
+
+const REVENUE_PATTERNS = [
+  /^(营业额|营收|日营业额|月营业额|年营业额|revenue|sales|income|流水)/i,
+];
+
 function matchAny(header: string, patterns: RegExp[]): boolean {
   return patterns.some((p) => p.test(header.trim()));
 }
@@ -41,6 +51,8 @@ export function detectColumns(headers: string[]): DetectedColumns {
     addressCol: null,
     lngCol: null,
     latCol: null,
+    categoryCol: null,
+    revenueCol: null,
     headers,
   };
 
@@ -63,6 +75,14 @@ export function detectColumns(headers: string[]): DetectedColumns {
 
     if (result.latCol === null && matchAny(h, LAT_PATTERNS) && !matchAny(h, COMBINED_COORD_PATTERNS)) {
       result.latCol = i;
+    }
+
+    if (result.categoryCol === null && matchAny(h, CATEGORY_PATTERNS)) {
+      result.categoryCol = i;
+    }
+
+    if (result.revenueCol === null && matchAny(h, REVENUE_PATTERNS)) {
+      result.revenueCol = i;
     }
   }
 

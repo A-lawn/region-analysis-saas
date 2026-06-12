@@ -138,14 +138,16 @@ export function useAmap() {
       if (coords.length && typeof coords[0][0] === 'number') {
         // Simple polygon: coords is [[lng,lat],...]
         polygons.push(coords.map((p: number[]) => [p[0], p[1]] as [number, number]))
-      } else if (Array.isArray(coords[0][0])) {
-        // MultiPolygon or Polygon with holes
-        for (const ring of coords) {
-          if (typeof ring[0][0] === 'number') {
-            polygons.push(ring.map((p: number[]) => [p[0], p[1]] as [number, number]))
-          } else {
-            for (const subring of ring) {
-              polygons.push(subring.map((p: number[]) => [p[0], p[1]] as [number, number]))
+      } else if (Array.isArray(coords[0])) {
+        // Check if first element is a coordinate pair -> Polygon (possibly with holes)
+        if (Array.isArray(coords[0][0]) && typeof coords[0][0][0] === 'number') {
+          // Polygon: coords[0] is outer ring, coords[1+] are holes. Only render outer ring.
+          polygons.push(coords[0].map((p: number[]) => [p[0], p[1]] as [number, number]))
+        } else {
+          // MultiPolygon: each element is a polygon (ring array)
+          for (const poly of coords) {
+            if (Array.isArray(poly) && poly.length > 0 && Array.isArray(poly[0]) && typeof poly[0][0] === 'number') {
+              polygons.push(poly[0].map((p: number[]) => [p[0], p[1]] as [number, number]))
             }
           }
         }
