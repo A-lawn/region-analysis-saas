@@ -5,6 +5,7 @@ import type { IndustryConfig, IndustryListItem } from '@/types'
 
 export const useIndustryStore = defineStore('industry', () => {
   const industries = ref<IndustryConfig[]>([])
+  const kpiDisplayNames = ref<Record<string, string>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
 

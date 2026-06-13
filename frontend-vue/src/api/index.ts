@@ -130,7 +130,7 @@ export async function purgeProject(projectId: string, removeBackup: boolean = fa
 
 
 // ===== Industry APIs (v2.0) =====
-export async function getIndustries(): Promise<{ models: any[] }> {
+export async function getIndustries(): Promise<{ models: any[]; kpiDisplayNames?: Record<string, string> }> {
   const { data } = await apiClient.get('/industries')
   return data
 }

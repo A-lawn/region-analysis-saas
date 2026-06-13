@@ -21,7 +21,7 @@
     </div>
     <div class="industry-meta" v-if="selectedIndustry && currentConfig">
       <span class="meta-badge" v-for="(w, k) in currentConfig.kpiWeights" :key="k">
-        {{ k }}: {{ (w * 100).toFixed(0) }}%
+        {{ store.kpiDisplayNames[k] || k }}: {{ (w * 100).toFixed(0) }}%
       </span>
     </div>
   </div>

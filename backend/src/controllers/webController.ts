@@ -356,6 +356,17 @@ router.get("/industries", authRequired, async (_req: Request, res: Response) => 
   const rows = await db.manyOrNone(
     "SELECT id, industry, display_name, COALESCE(radius_meters, 500) AS radius_meters, COALESCE(weights::text, '{}') AS weights_text, COALESCE(kpi_weights::text, '{}') AS kpi_weights_text, COALESCE(benchbarks::text, '{}') AS benchbarks_text, COALESCE(decision_thresholds::text, '{}') AS decision_thresholds_text FROM site_optimization_models ORDER BY sort_order ASC, display_name ASC"
   );
+
+  // Load KPI Chinese display names for frontend rendering
+  let kpiDisplayNames: Record<string, string> = {};
+  try {
+    const kpiRows = await db.manyOrNone(
+      "SELECT kpi_name, display_name FROM kpi_category_map WHERE display_name IS NOT NULL"
+    );
+    for (const kr of kpiRows || []) {
+      kpiDisplayNames[kr.kpi_name] = kr.display_name;
+    }
+  } catch { /* non-critical, frontend falls back to kpi_name */ }
   const models = rows.map((r: any) => {
     let weights = {}; let kpiWeights = {}; let benchmarks = {}; let decisionThresholds = {};
     try { weights = typeof r.weights_text === 'string' ? JSON.parse(r.weights_text) : r.weights_text; } catch {}
@@ -374,7 +385,7 @@ router.get("/industries", authRequired, async (_req: Request, res: Response) => 
       keywords: [],
     };
   });
-  res.json({ models });
+  res.json({ models, kpiDisplayNames });
 });
 
 // ---- GET /api/web/industries/:id/model (auth required) ----
