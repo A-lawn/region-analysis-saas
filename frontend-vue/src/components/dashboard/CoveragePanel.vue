@@ -1,12 +1,8 @@
 ﻿<template>
   <div class="panel">
     <h4 class="panel-title">覆盖范围分析</h4>
-    <div class="param-group" v-if="industryRadii.length">
-      <label class="param-group-label">行业预设</label>
-      <select v-model="selectedIndustry" @change="onIndustryChange" class="industry-select">
-        <option value="">自定义半径</option>
-        <option v-for="ind in industryRadii" :key="ind.industry" :value="ind.industry">{{ ind.label }} ({{ ind.radiusMeters }}m)</option>
-      </select>
+    <div class="param-group">
+      <IndustrySelector v-model="selectedIndustry" @change="onIndustryChange" />
       <div v-if="selectedIndustry" class="preset-hint">
         预设半径 {{ getPresetRadius() }}m · 滑动滑块将切换为自定义
       </div>
@@ -218,6 +214,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { getCoverage, getIndustryRadii, type IndustryRadius } from '@/api'
+import IndustrySelector from '@/components/shared/IndustrySelector.vue'
 import AnalysisParams, { type AnalysisParam } from '@/components/shared/AnalysisParams.vue'
 import TaskProgress from '@/components/shared/TaskProgress.vue'
 import type { CoverageResult, TaskInfo } from '@/types'

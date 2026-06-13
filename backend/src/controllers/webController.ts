@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import logger from "../utils/logger";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { v4 as uuidv4 } from "uuid";
@@ -334,6 +335,23 @@ router.get("/industries/:id/model", authRequired, async (req: Request, res: Resp
   res.json(model);
 });
 
+
+
+// ---- GET /api/web/industries/:industry/benchmark (auth required) ----
+// Compare project analysis metrics against industry benchmarks
+router.get("/industries/:industry/benchmark", authRequired, async (req: Request, res: Response) => {
+  try {
+    const { compareWithBenchmarks } = require("../services/analysis/benchmarkService");
+    const metrics = req.query.metrics ? JSON.parse(req.query.metrics as string) : {};
+    const result = await compareWithBenchmarks(req.params.industry, metrics);
+    if (!result) throw new AppError(404, "该行业暂无 Benchmark 数据", "BENCHMARK_NOT_FOUND");
+    res.json(result);
+  } catch (err) {
+    if (err instanceof SyntaxError) throw new AppError(400, "metrics 参数格式错误，需为 JSON 字符串", "INVALID_METRICS_JSON");
+    if (err instanceof AppError) throw err;
+    throw err;
+  }
+});
 
 // ---- DELETE /api/web/projects/:id (soft-delete, auth required) ----
 router.delete("/projects/:id", authRequired, async (req: Request, res: Response) => {

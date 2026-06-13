@@ -4,12 +4,7 @@
 
     <div class="param-group">
       <label>行业模型</label>
-      <select v-model="industry" class="industry-select">
-        <option value="">自定义权重</option>
-        <option value="convenience">便利店</option>
-        <option value="restaurant">餐饮</option>
-        <option value="pharmacy">药店/诊所</option>
-      </select>
+      <IndustrySelector v-model="industry" @change="onIndustryChange" />
     </div>
     <div class="param-group">
       <label>距离权重</label>
@@ -75,9 +70,13 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { getSiteOptimization } from '@/api'
+import IndustrySelector from '@/components/shared/IndustrySelector.vue'
+import { useIndustryStore } from '@/stores/industry'
 import TaskProgress from '@/components/shared/TaskProgress.vue'
 import type { SiteOptimizationResult, TaskInfo } from '@/types'
 import axios from 'axios'
+
+industryStore.fetchIndustries()
 
 const props = defineProps<{
   projectId: string
@@ -87,6 +86,22 @@ const props = defineProps<{
 const emit = defineEmits<{
   result: [data: SiteOptimizationResult]
 }>()
+
+
+const industryStore = useIndustryStore()
+
+function onIndustryChange() {
+  if (!industry.value) return
+  const cfg = industryStore.getIndustry(industry.value)
+  if (cfg && cfg.kpiWeights) {
+    // Auto-fill weights from industry KPI config
+    // Map common KPI names to our 3-dimensional weight system
+    const kw = cfg.kpiWeights as Record<string, number>
+    weights.distanceWeight = kw.walkableRatio || kw.footTraffic || kw.populationDensity || 0.4
+    weights.blindSpotWeight = kw.competitorAvoidance || kw.competitionSweetSpot || kw.competitorDistance || 0.35
+    weights.densityWeight = kw.poiDensity || kw.deliveryCoverage || kw.commercialDensity || 0.25
+  }
+}
 
 const weights = reactive({ distanceWeight: 0.4, blindSpotWeight: 0.35, densityWeight: 0.25 })
 const industry = ref('')

@@ -14,22 +14,45 @@ interface POIRecord {
   address: string;
 }
 
-const COLLECT_QUEUE: { city: string; keyword: string; category: string }[] = [
+// Default target cities (used when DB unavailable)
+const DEFAULT_CITIES = ["北京", "上海", "广州", "深圳", "成都", "杭州", "武汉", "南京"];
+const DEFAULT_QUEUE: { city: string; keyword: string; category: string }[] = [
   { city: "北京", keyword: "住宅小区", category: "residential" },
   { city: "上海", keyword: "住宅小区", category: "residential" },
-  { city: "广州", keyword: "住宅小区", category: "residential" },
-  { city: "深圳", keyword: "住宅小区", category: "residential" },
-  { city: "成都", keyword: "住宅小区", category: "residential" },
-  { city: "杭州", keyword: "住宅小区", category: "residential" },
   { city: "北京", keyword: "写字楼", category: "office" },
   { city: "上海", keyword: "写字楼", category: "office" },
   { city: "北京", keyword: "地铁站", category: "transport" },
   { city: "上海", keyword: "地铁站", category: "transport" },
   { city: "北京", keyword: "商圈", category: "commercial" },
   { city: "上海", keyword: "商圈", category: "commercial" },
-  { city: "北京", keyword: "医院", category: "medical" },
-  { city: "上海", keyword: "医院", category: "medical" },
 ];
+
+/**
+ * Load POI collection queue from poi_categories table.
+ * Cross-joins enabled categories × target cities.
+ * Falls back to DEFAULT_QUEUE when DB unavailable.
+ */
+async function loadCollectQueue(db: any): Promise<{ city: string; keyword: string; category: string }[]> {
+  try {
+    const rows = await db.manyOrNone(
+      "SELECT category, amap_keyword FROM poi_categories WHERE enabled = true ORDER BY sort_order"
+    );
+    if (rows && rows.length > 0) {
+      const cities = DEFAULT_CITIES;
+      const queue: { city: string; keyword: string; category: string }[] = [];
+      for (const row of rows) {
+        for (const city of cities) {
+          queue.push({ city, keyword: row.amap_keyword, category: row.category });
+        }
+      }
+      logger.info({ categories: rows.length, cities: cities.length, queueSize: queue.length }, "[POI] Dynamic queue loaded from DB");
+      return queue;
+    }
+  } catch (err: any) {
+    logger.warn({ error: err.message }, "[POI] Failed to load queue from DB, using defaults");
+  }
+  return DEFAULT_QUEUE;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -105,7 +128,7 @@ export async function collectPOI(
       }
     }
   } catch (err: any) {
-    console.error("Collection failed for " + city + "/" + keyword + ": " + err.message);
+    logger.error({ city, keyword, error: err.message }, "[POI] Collection failed");
   }
 
   return totalInserted;
@@ -146,15 +169,18 @@ async function insertPOIBatch(db: any, pois: POIRecord[], category: string): Pro
 }
 
 export async function runCollector(db: any) {
-  logger.info("POI Collector Started");
+  logger.info("[POI] Collector started");
   let total = 0;
 
-  for (const item of COLLECT_QUEUE) {
+  const queue = await loadCollectQueue(db);
+  logger.info({ queueSize: queue.length }, "[POI] Queue loaded");
+
+  for (const item of queue) {
     await sleep(QPS_LIMIT_MS * 2);
     total += await collectPOI(item.city, item.keyword, item.category, db);
   }
 
-  logger.info({ total }, "POI Collector Finished");
+  logger.info({ total }, "[POI] Collector finished");
   return total;
 }
 
