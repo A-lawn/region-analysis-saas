@@ -336,7 +336,7 @@ export async function computeCoverage(
       [projectId]
     );
     const pointCount = pointCountRow?.cnt || 0;
-    const advice = generateAdvice({ pointCount, triangulation: triMetrics });
+    const advice = await generateAdvice({ pointCount, triangulation: triMetrics });
 
 // ---- Overlap layers (exclusive/double/triple+) from triangulation ----
     let overlapLayers: OverlapLayers | undefined;
@@ -578,7 +578,7 @@ export async function computeSiteOptimization(
       // Competition: penalize if competitors within 500m; 0 competitors=100, 5+=0
       const comp_500m = comp.competitorCount500m || 0;
       const compScore = Math.max(0, 1 - comp_500m / 5);
-      const advice = generateAdvice({});
+      const advice = await generateAdvice({});
       const dr = await db.one(
         "SELECT MIN(ST_Distance(ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, geom::geography)) AS min_dist, COUNT(*)::INTEGER AS point_count FROM spatial_points WHERE project_id = $3",
         [wgsLng, wgsLat, projectId]
