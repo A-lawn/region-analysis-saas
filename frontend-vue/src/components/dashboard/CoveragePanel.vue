@@ -213,8 +213,9 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getCoverage, getIndustryRadii, type IndustryRadius } from '@/api'
+import { getCoverage } from '@/api'
 import IndustrySelector from '@/components/shared/IndustrySelector.vue'
+import { useIndustryStore } from '@/stores/industry'
 import AnalysisParams, { type AnalysisParam } from '@/components/shared/AnalysisParams.vue'
 import TaskProgress from '@/components/shared/TaskProgress.vue'
 import type { CoverageResult, TaskInfo } from '@/types'
@@ -242,7 +243,7 @@ const enableClip = ref(false)
 const clipGeojson = ref<any>(null)
 const clipBoundaryName = ref('')
 const networkMode = ref('')
-const industryRadii = ref<IndustryRadius[]>([])
+const industryStore = useIndustryStore()
 const selectedIndustry = ref('')
 const result = ref<CoverageResult | CoverageResult[] | null>(null)
 const expandedRadii = ref<boolean[]>([true, true, true])
@@ -255,25 +256,22 @@ const voronoiPalette: string[][] = [
   ["rgba(52,120,246,0.18)", "#3478F6"], ["rgba(48,219,176,0.18)", "#30DBB0"],
 ]
 
-onMounted(async () => {
-  try {
-    const { industries } = await getIndustryRadii()
-    industryRadii.value = industries
-  } catch {}
+onMounted(() => {
+  industryStore.fetchIndustries()
 })
 
 function onIndustryChange() {
-  const match = industryRadii.value.find(i => i.industry === selectedIndustry.value)
+  const match = industryStore.industryList.find(i => i.industry === selectedIndustry.value)
   if (match) {
     values.value.radius = match.radiusMeters
   }
 }
 function getPresetRadius(): number | null {
-  const match = industryRadii.value.find(i => i.industry === selectedIndustry.value)
+  const match = industryStore.industryList.find(i => i.industry === selectedIndustry.value)
   return match ? match.radiusMeters : null
 }
 function industryLabel(code: string): string {
-  const match = industryRadii.value.find(i => i.industry === code)
+  const match = industryStore.industryList.find(i => i.industry === code)
   return match ? match.label : code
 }
 
@@ -387,7 +385,7 @@ function toggleRadius(i: number) {
 function onUpdate(v: Record<string, number>) {
   values.value = v
   // Bidirectional sync: slider matches a preset → auto-select it; otherwise → custom
-  const match = industryRadii.value.find(i => i.radiusMeters === v.radius)
+  const match = industryStore.industryList.find(i => i.radiusMeters === v.radius)
   if (match) {
     selectedIndustry.value = match.industry
   } else {
