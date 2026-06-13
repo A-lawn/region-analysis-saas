@@ -25,3 +25,19 @@ tmp/
 # Temp & duplicates
 temp.patch
 docs/审计与改进计计划书.md
+
+# Backups (generated data, not source)
+backend/backups/
+backups/
+
+# Python utility scripts (dev/debug artifacts)
+*.py
+!database/*.py
+
+# Debug/verification SQL scripts
+database/verify_*.sql
+database/fix_*.sql
+
+# Codex internal
+.codex/
+AGENTS.md
