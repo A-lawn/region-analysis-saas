@@ -52,7 +52,7 @@
       </div>
     </div>
     <div class="param-group">
-      <label class="param-group-label">路网等时圈 (OSRM)</label>
+      <label class="param-group-label">路网等时圈</label>
       <div class="radio-row">
         <label class="radio-label">
           <input type="radio" v-model="networkMode" value="" />
@@ -63,9 +63,28 @@
           步行
         </label>
         <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="cycling" />
+          骑行
+        </label>
+        <label class="radio-label">
           <input type="radio" v-model="networkMode" value="driving" />
           驾车
         </label>
+      </div>
+      <div class="radio-row" style="margin-top: 4px">
+        <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="bus" />
+          公交
+        </label>
+        <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="subway" />
+          地铁
+        </label>
+        <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="bus+subway" />
+          公交+地铁
+        </label>
+        <span class="param-hint" style="font-size: 11px; color: #94a3b8; margin-left: auto;">🚇 高德公交API</span>
       </div>
     </div>
     <TaskProgress v-if="task" :task="task" />
