@@ -31,7 +31,7 @@ export async function loadIndustryConfig(industry: string): Promise<IndustryConf
 
     const row = result.rows[0];
     const ap = row.analysis_params || {};
-    const weightsMapping = (row.weights && row.weights.kpi_mapping) || {};
+    const weightsMapping = (row.kpi_weights && typeof row.kpi_weights === 'object' && Object.keys(row.kpi_weights).length > 0) ? row.kpi_weights : ((row.weights && row.weights.kpi_mapping) || {});
 
     // Load keywords
     let keywords: string[] = [];
@@ -98,7 +98,7 @@ export async function loadAllIndustryConfigs(): Promise<IndustryConfig[]> {
     const configs: IndustryConfig[] = [];
     for (const row of result.rows) {
       const ap = row.analysis_params || {};
-      const weightsMapping = (row.weights && row.weights.kpi_mapping) || {};
+      const weightsMapping = (row.kpi_weights && typeof row.kpi_weights === 'object' && Object.keys(row.kpi_weights).length > 0) ? row.kpi_weights : ((row.weights && row.weights.kpi_mapping) || {});
       configs.push({
         industry: row.industry,
         displayName: row.display_name,

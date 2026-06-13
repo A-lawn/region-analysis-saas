@@ -4,6 +4,8 @@ import { cacheGet, cacheSet } from "./cacheService";
 import crypto from "crypto";
 import { batchCompetitionAnalysis } from "./competitionService";
 import { generateAdvice } from "./decisionEngine";
+import { batchNormalizeKpis, weightedSum } from "./analysis/kpiNormalizer";
+import type { KpiNormalizerEntry, KpiValueMap } from "./analysis/kpiNormalizer";
 
 export interface TriangulationMetrics {
   coverageConnectivity: number;
@@ -563,18 +565,31 @@ export async function computeSiteOptimization(
 ): Promise<any> {
   const cacheKey = `analysis:${projectId}:siteopt:${paramsHash(options as any)}`;
   return cached(cacheKey, config.cache.ttl, async () => {
-    // E2: Load industry model with algorithm + kpi_mapping
+    // P0-2: Load industry KPI weights from kpi_weights + scoring_algorithm (unified in 010 migration)
     let algorithm: string = "weighted_sum";
     let kpiMapping: Record<string, number> | null = null;
     if (options.industry) {
       const model = await db.oneOrNone(
-        `SELECT weights FROM site_optimization_models WHERE industry = $[industry]`,
+        `SELECT kpi_weights, scoring_algorithm FROM site_optimization_models WHERE industry = $[industry]`,
         { industry: options.industry }
       );
-      if (model?.weights) {
-        const w = typeof model.weights === 'string' ? JSON.parse(model.weights) : model.weights;
-        algorithm = w.algorithm || "weighted_sum";
-        kpiMapping = w.kpi_mapping || null;
+      if (model) {
+        algorithm = model.scoring_algorithm || "weighted_sum";
+        const raw = typeof model.kpi_weights === 'string' ? JSON.parse(model.kpi_weights) : model.kpi_weights;
+        if (raw && typeof raw === 'object' && Object.keys(raw).length > 0) {
+          kpiMapping = raw;
+        }
+      }
+      // Fallback: if kpi_weights still empty, try deprecated weights.kpi_mapping
+      if (!kpiMapping) {
+        const legacy = await db.oneOrNone(
+          "SELECT weights FROM site_optimization_models WHERE industry = $[industry]",
+          { industry: options.industry }
+        );
+        if (legacy?.weights) {
+          const w = typeof legacy.weights === 'string' ? JSON.parse(legacy.weights) : legacy.weights;
+          kpiMapping = w.kpi_mapping || null;
+        }
       }
     }
     const { candidates, topK } = options;
@@ -604,6 +619,24 @@ export async function computeSiteOptimization(
 
     const compResults = await batchCompetitionAnalysis(projectId, candidates);
 
+    // P1-2: Load KPI normalizer registry from kpi_category_map (includes normalization_type + params)
+    let kpiNormalizers: KpiNormalizerEntry[] = [];
+    try {
+      const rows = await db.manyOrNone(
+        "SELECT kpi_name, category, normalization_type, normalization_params FROM kpi_category_map"
+      );
+      for (const r of rows || []) {
+        kpiNormalizers.push({
+          kpiName: r.kpi_name,
+          category: r.category,
+          normalizationType: r.normalization_type || "linearUp",
+          normalizationParams: r.normalization_params || {},
+        });
+      }
+    } catch (e: any) {
+      console.warn("[SiteOpt] kpi_category_map load failed:", e.message);
+    }
+
     const scored = [];
     const { convertCoord } = require('../utils/coordTransform');
     for (let i = 0; i < candidates.length; i++) {
@@ -615,52 +648,112 @@ export async function computeSiteOptimization(
         wgsLng = wgs.lng;
         wgsLat = wgs.lat;
       } catch {
-        // If conversion fails, use as-is and log warning
         console.warn("[SiteOpt] CRS conversion failed for candidate:", c.name);
       }
       const comp = compResults[i] || { saturation: 'medium' as const, competitorCount500m: 0, competitorCount1000m: 0, gapRatio: 1 };
-      // Competition: penalize if competitors within 500m; 0 competitors=100, 5+=0
-      const comp_500m = comp.competitorCount500m || 0;
-      const compScore = Math.max(0, 1 - comp_500m / 5);
-      const advice = await generateAdvice({ industry: options.industry });
+
+      // ---- Compute raw KPI values for this candidate ----
+      const rawKpis: KpiValueMap = {};
+
+      // Geometric KPIs (always computable from spatial data)
       const dr = await db.one(
         "SELECT MIN(ST_Distance(ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, geom::geography)) AS min_dist, COUNT(*)::INTEGER AS point_count FROM spatial_points WHERE project_id = $3",
         [wgsLng, wgsLat, projectId]
       );
       const minDist = parseFloat(dr.min_dist || "0");
-      const distScore = Math.min(minDist / 500, 1.0); // normalized: 0m=0, 500m+=100 (beyond 500m no conflict)
-      const blindScore = Math.min(minDist / 3000, 1.0); // further from existing = more blindspot coverage value
       const nearbyCount = parseInt(dr.point_count || "0");
-      const densScore = Math.min(nearbyCount / 50, 1.0); // more nearby points = higher commercial density
-            // Load KPI category map from database (cached per request session)
-      // Falls back to empty map if table doesn't exist yet
-      let kpiCategory: Record<string, string> = {};
-      try {
-        const rows = await db.manyOrNone(
-          "SELECT kpi_name, category FROM kpi_category_map"
-        );
-        for (const r of rows || []) {
-          kpiCategory[r.kpi_name] = r.category;
-        }
-      } catch (e: any) {
-        console.warn("[SiteOpt] kpi_category_map load failed, using empty map:", e.message);
+
+      // distanceScore: how far from existing stores (closer = more conflict, lower score)
+      rawKpis["distanceWeight"] = minDist;       // legacy compat
+      rawKpis["competitorDistance"] = minDist;
+      rawKpis["competitorDistanceSafe"] = minDist;
+
+      // blindSpotScore: further from existing = fills more blindspot
+      rawKpis["blindSpotWeight"] = minDist;       // legacy compat
+
+      // competition KPIs
+      const comp500m = comp.competitorCount500m || 0;
+      const comp1000m = comp.competitorCount1000m || 0;
+      rawKpis["competitionDensity"] = comp500m;
+      rawKpis["competitorAvoidance"] = comp500m;
+      rawKpis["competitionSweetSpot"] = comp500m;
+      rawKpis["competitorClustering"] = comp500m;
+      rawKpis["hotelCluster"] = comp1000m;
+      rawKpis["beautyCluster"] = comp1000m;
+      rawKpis["autoCluster"] = comp1000m;
+
+      // density KPIs
+      rawKpis["densityWeight"] = nearbyCount;     // legacy compat
+      rawKpis["poiDensity"] = nearbyCount;
+      rawKpis["commercialDensity"] = nearbyCount;
+      rawKpis["residentialDensity"] = nearbyCount;
+
+      // competition gap/overlap from triangulation (global metrics, same for all candidates)
+      rawKpis["gapRatio"] = comp.gapRatio || 0;
+      rawKpis["overlapRatio"] = 0;
+      rawKpis["cannibalizationIndex"] = 0;
+
+      // site KPIs — default to mid-range when data unavailable
+      rawKpis["rentFactor"] = 1.0;
+      rawKpis["rentLevel"] = 0.5;
+      rawKpis["roadFrontage"] = 50;
+      rawKpis["roadFrontageBonus"] = 0;
+      rawKpis["streetAccess"] = 0;
+      rawKpis["landAvailability"] = 3000;
+      rawKpis["zoningCompliance"] = 0.7;
+      rawKpis["policyCompliance"] = 150;
+      rawKpis["transportConvenience"] = 2;
+      rawKpis["barrierBonus"] = 0;
+
+      // reach KPIs
+      rawKpis["walkableRatio"] = Math.min(1, minDist / 500);
+      rawKpis["coverageRatio"] = 0.5;
+      rawKpis["footTraffic"] = 10;
+      rawKpis["visibility"] = 0;
+      rawKpis["deliveryCoverage"] = 0.5;
+      rawKpis["brandProtection"] = minDist;
+      rawKpis["schoolProximity"] = 0;
+      rawKpis["dineInRadius"] = nearbyCount;
+
+      // density KPIs (more detailed)
+      rawKpis["populationStructure"] = 0.5;
+      rawKpis["populationDensity"] = nearbyCount * 100;
+      rawKpis["medicalCoverage"] = 0.5;
+      rawKpis["trafficAccessibility"] = 2;
+      rawKpis["regionalCarOwnership"] = 50;
+      rawKpis["parkingAvailability"] = 0;
+      rawKpis["communityMaturity"] = 0.5;
+      rawKpis["highIncomeDensity"] = 20;
+      rawKpis["familyDensity"] = nearbyCount * 20;
+      rawKpis["carOwnershipDensity"] = 50;
+
+      // competition hard-filter (only set if explicitly available)
+      rawKpis["competitorDistanceHard"] = minDist;
+
+      // ---- Normalize via KPI engine ----
+      const { scores, hardFilterPassed } = batchNormalizeKpis(rawKpis, kpiNormalizers);
+
+      // ---- Weighted sum ----
+      let total: number;
+      if (!hardFilterPassed) {
+        total = 0; // candidate eliminated by hard filter
+      } else {
+        total = weightedSum(scores, normalizedKpi);
       }
 
-      let total = 0;
-      for (const [kpiName, weight] of Object.entries(normalizedKpi)) {
-        const cat = kpiCategory[kpiName] || "reach";
-        if (cat === "competition") {
-          total += compScore * weight;
-        } else if (cat === "density") {
-          total += densScore * weight;
-        } else if (cat === "site") {
-          total += blindScore * weight;
-        } else {
-          total += distScore * weight;
-        }
-      }
+      // ---- Decision advice ----
+      const advice = await generateAdvice({ industry: options.industry });
+
+      // Compute legacy dimensions for backward compatibility
+      const distScore = Math.min(minDist / 500, 1.0);
+      const blindScore = Math.min(minDist / 3000, 1.0);
+      const compScore = Math.max(0, 1 - comp500m / 5);
+      const densScore = Math.min(nearbyCount / 50, 1.0);
+
       scored.push({ name: c.name, lng: c.lng, lat: c.lat,
         score: Math.round(total * 100),
+        hardFilterPassed,
+        kpiScores: scores,
         dimensions: {
           distanceScore: Math.round(distScore * 100),
           blindSpotScore: Math.round(blindScore * 100),
@@ -668,8 +761,8 @@ export async function computeSiteOptimization(
           densityScore: Math.round(densScore * 100),
           minDistanceMeters: Math.round(minDist),
           nearbyPoints: nearbyCount,
-          competitors500m: comp.competitorCount500m,
-          competitors1000m: comp.competitorCount1000m,
+          competitors500m: comp500m,
+          competitors1000m: comp1000m,
           saturation: comp.saturation,
           gapRatio: comp.gapRatio,
         },

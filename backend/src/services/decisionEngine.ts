@@ -216,7 +216,7 @@ const INDUSTRY_RULES: DecisionRule[] = [
   // ——— Beverage ———
   {
     id: "beverage-traffic-low",
-    condition: (c) => (c.footTraffic ?? 0) < 15,
+    condition: (c) => (c.footTraffic != null ? c.footTraffic < 15 : false),
     message: "客流热度不足（< 15），茶饮/咖啡选址建议选择人流量>30的商圈或办公区",
     priority: "high",
     industries: ["beverage"],
@@ -224,7 +224,7 @@ const INDUSTRY_RULES: DecisionRule[] = [
   {
     id: "beverage-sweet-spot",
     condition: (c) => {
-      const d = c.competitorDensity ?? 0;
+      const d = c.competitorDensity ?? -1;
       return d >= 1 && d <= 3;
     },
     message: "竞品密度处于甜点区间（1-3家），竞争适中有利于形成品类聚集效应",
@@ -258,7 +258,7 @@ const INDUSTRY_RULES: DecisionRule[] = [
   // ——— Hotel ———
   {
     id: "hotel-traffic-low",
-    condition: (c) => (c.footTraffic ?? 0) < 5,
+    condition: (c) => (c.footTraffic != null ? c.footTraffic < 5 : false),
     message: "交通便利度不足，酒店选址应靠近地铁/火车站或主干道",
     priority: "high",
     industries: ["hotel"],
@@ -277,14 +277,14 @@ const INDUSTRY_RULES: DecisionRule[] = [
   // ——— Education ———
   {
     id: "education-family-low",
-    condition: (c) => (c.populationDensity ?? 0) < 3000,
+    condition: (c) => (c.populationDensity != null ? c.populationDensity < 3000 : false),
     message: "周边家庭密度偏低，教育培训应选择有孩家庭集中的成熟社区",
     priority: "high",
     industries: ["education"],
   },
   {
     id: "education-competitor-far",
-    condition: (c) => (c.nearestCompetitorDistance ?? 0) > 800,
+    condition: (c) => (c.nearestCompetitorDistance != null ? c.nearestCompetitorDistance > 800 : false),
     message: "竞品距离较远（> 800m），该区域可能存在市场空白机会",
     priority: "medium",
     industries: ["education"],
@@ -293,7 +293,7 @@ const INDUSTRY_RULES: DecisionRule[] = [
   // ——— Auto4S ———
   {
     id: "auto-road-frontage",
-    condition: (c) => (c.roadFrontage ?? 0) < 30,
+    condition: (c) => (c.roadFrontage != null ? c.roadFrontage < 30 : false),
     message: "临路面宽不足（< 30m），4S店需优先选择临主干道且面宽充足的地块",
     priority: "high",
     industries: ["auto4s"],
@@ -318,14 +318,14 @@ const INDUSTRY_RULES: DecisionRule[] = [
   // ——— Logistics ———
   {
     id: "logistics-residential-low",
-    condition: (c) => (c.populationDensity ?? 0) < 5000,
+    condition: (c) => (c.populationDensity != null ? c.populationDensity < 5000 : false),
     message: "居住密度偏低，快递驿站应选择人口集中社区（> 5000人/km²）",
     priority: "high",
     industries: ["logistics"],
   },
   {
     id: "logistics-competitor-near",
-    condition: (c) => (c.nearestCompetitorDistance ?? 9999) < 150,
+    condition: (c) => (c.nearestCompetitorDistance != null ? c.nearestCompetitorDistance < 150 : false),
     message: "竞品距离过近（< 150m），快递驿站通常300m内不宜开设第二家",
     priority: "high",
     industries: ["logistics"],
@@ -334,7 +334,7 @@ const INDUSTRY_RULES: DecisionRule[] = [
   // ——— Pet Service ———
   {
     id: "pet-residential-low",
-    condition: (c) => (c.populationDensity ?? 0) < 4000,
+    condition: (c) => (c.populationDensity != null ? c.populationDensity < 4000 : false),
     message: "居住密度偏低，宠物服务应选择成熟中高端社区",
     priority: "medium",
     industries: ["pet_service"],
