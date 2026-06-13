@@ -305,7 +305,7 @@ router.get("/coverage/industry-radii", authRequired, async (_req: Request, res: 
     console.warn("[industry-radii] DB query failed, using config fallback:", e.message);
   }
   // Fallback to hardcoded config
-  const industries = config.coverage.industryRadii.map(r => ({
+  const industries = config.coverage.industryRadii.map((r: any) => ({
     industry: r.industry,
     label: r.label,
     radiusMeters: r.radiusMeters,
