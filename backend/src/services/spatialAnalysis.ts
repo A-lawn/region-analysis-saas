@@ -167,7 +167,7 @@ async function computeTriangulationMetrics(projectId: string, radiusMeters: numb
 export async function computeCoverage(
   projectId: string,
   radiusMeters: number,
-  opts?: { decayMode?: boolean; includeWhiteSpace?: boolean; clipGeojson?: any; networkMode?: "walking" | "driving"; industry?: string }
+  opts?: { decayMode?: boolean; includeWhiteSpace?: boolean; clipGeojson?: any; networkMode?: "walking" | "driving" | "cycling" | "bus" | "subway" | "bus+subway"; industry?: string }
 ): Promise<CoverageResult> {
   const decaySuffix = (opts?.decayMode) ? ":decay" : "";
   const wsSuffix = (opts?.includeWhiteSpace) ? ":ws" : "";
