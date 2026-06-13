@@ -8,6 +8,18 @@ import { AppError } from "../middleware/errorHandler";
 import { batchNormalizeKpis, weightedSum } from "./analysis/kpiNormalizer";
 import type { KpiNormalizerEntry, KpiValueMap } from "./analysis/kpiNormalizer";
 
+
+// Quick industry code → Chinese display name mapping (used in error messages)
+const INDUSTRY_DISPLAY_NAMES: Record<string, string> = {
+  convenience: "便利店", beverage: "茶饮/咖啡", restaurant: "餐饮",
+  pharmacy: "药店/诊所", fresh_grocery: "生鲜超市", supermarket: "商超",
+  hotel: "酒店/住宿", medical_aesthetics: "医美/口腔", education: "教育培训",
+  pet_service: "宠物服务", auto4s: "汽车4S店", logistics: "物流/快递驿站",
+};
+function industryDisplayName(code: string): string {
+  return INDUSTRY_DISPLAY_NAMES[code] || code;
+}
+
 export interface TriangulationMetrics {
   coverageConnectivity: number;
   overlapRatio: number;
@@ -192,7 +204,7 @@ export async function computeCoverage(
         [projectId]
       );
       const noDataMsg = opts?.industry
-        ? `当前数据中未找到行业为"${opts.industry}"的门店数据，请切换为"全部行业"后重试`
+        ? `当前数据中未找到"${industryDisplayName(opts.industry || '')}"行业的门店数据，请切换为"全部行业"后重试`
         : "该项目没有空间点位数据，请先上传数据";
       throw new AppError(422, noDataMsg, opts?.industry ? "INDUSTRY_MISMATCH" : "NO_SPATIAL_DATA");
     }
