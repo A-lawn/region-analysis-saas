@@ -95,7 +95,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/shared/AppIcon.vue'
-import axios from 'axios'
+import apiClient from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -119,7 +119,7 @@ function doPrint() { window.print() }
 
 onMounted(async () => {
   try {
-    const { data } = await axios.get('/api/web/projects/' + projectId + '/export/report')
+    const { data } = await apiClient.get('/projects/' + projectId + '/export/report')
     report.value = data
     try {
       const stored = sessionStorage.getItem('site_data_' + projectId)
