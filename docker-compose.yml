@@ -62,6 +62,30 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+
+  # OSRM 路网路由引擎 — 等时圈 + 路网距离矩阵
+  # 数据准备（首次运行前执行一次）：
+  #   1. 下载中国路网: wget https://download.geofabrik.de/asia/china-latest.osm.pbf -P ./osrm-data/
+  #   2. 预处理: docker run --rm -v ./osrm-data:/data ghcr.io/project-osrm/osrm-backend osrm-extract -p /opt/car.lua /data/china-latest.osm.pbf
+  #              docker run --rm -v ./osrm-data:/data ghcr.io/project-osrm/osrm-backend osrm-partition /data/china-latest.osrm
+  #              docker run --rm -v ./osrm-data:/data ghcr.io/project-osrm/osrm-backend osrm-customize /data/china-latest.osrm
+  #   3. 启动: docker compose up -d osrm
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend
+    container_name: region-analysis-osrm
+    command: osrm-routed --algorithm mld --max-table-size 10000 /data/china-latest.osrm
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/route/v1/driving/116.38,39.90;116.40,39.91"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - with-osrm
   frontend:
     image: nginx:alpine
     container_name: region-analysis-web

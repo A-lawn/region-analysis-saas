@@ -81,3 +81,104 @@ export async function computeWalkableRatio(
   const walkable = distances.filter(d => d <= maxWalkMeters).length;
   return walkable / distances.length;
 }
+
+// ===== Redis-Cached Route Matrix (v2.0) =====
+
+import { cacheGet, cacheSet } from "./cacheService";
+
+const ROUTE_CACHE_TTL = 86400 * 7; // 7 days for route distances
+
+/**
+ * Get road-network distance matrix with Redis caching.
+ * Cache key: h3 pair (resolution 9 ~174m granularity).
+ */
+export async function getCachedRouteMatrix(
+  origin: { lng: number; lat: number },
+  destinations: { lng: number; lat: number }[],
+  mode: TransportMode = "driving"
+): Promise<{ distances: number[]; durations: number[]; fromCache: boolean }> {
+  // Build cache key from h3 indices
+  let fromCache = true;
+  const originH3 = require("../utils/h3Index").pointToH3(origin.lng, origin.lat, 9);
+
+  const distances: number[] = [];
+  const durations: number[] = [];
+
+  for (const dest of destinations) {
+    const destH3 = require("../utils/h3Index").pointToH3(dest.lng, dest.lat, 9);
+    const cacheKey = "route:" + mode + ":" + originH3 + ":" + destH3;
+
+    let cached = null;
+    try {
+      const raw = await cacheGet(cacheKey);
+      if (raw) cached = JSON.parse(raw);
+    } catch {}
+
+    if (cached) {
+      distances.push(cached.distance);
+      durations.push(cached.duration);
+    } else {
+      fromCache = false;
+      // Fallback to haversine if not cached (batch refresh later)
+      const hd = haversineDistance(origin.lng, origin.lat, dest.lng, dest.lat);
+      distances.push(hd);
+      durations.push(hd / 1.4);
+    }
+  }
+
+  return { distances, durations, fromCache };
+}
+
+/**
+ * Batch refresh route cache — call periodically to populate OSRM distances.
+ * Processes destinations in batches to respect OSRM table size limits.
+ */
+export async function refreshRouteCache(
+  origins: { lng: number; lat: number }[],
+  destinations: { lng: number; lat: number }[],
+  mode: TransportMode = "driving",
+  batchSize: number = 50
+): Promise<number> {
+  let cached = 0;
+
+  for (let i = 0; i < origins.length; i += batchSize) {
+    const originBatch = origins.slice(i, i + batchSize);
+    for (let j = 0; j < destinations.length; j += batchSize) {
+      const destBatch = destinations.slice(j, j + batchSize);
+
+      // For each origin, get distances to all destinations in batch
+      const promises = originBatch.map(async (origin) => {
+        try {
+          const result = await getRouteMatrix(origin, destBatch, mode);
+          const originH3 = require("../utils/h3Index").pointToH3(origin.lng, origin.lat, 9);
+
+          for (let k = 0; k < destBatch.length; k++) {
+            const destH3 = require("../utils/h3Index").pointToH3(destBatch[k].lng, destBatch[k].lat, 9);
+            const cacheKey = "route:" + mode + ":" + originH3 + ":" + destH3;
+            await cacheSet(cacheKey, JSON.stringify({
+              distance: result.distances[k] || 0,
+              duration: result.durations[k] || 0,
+            }), ROUTE_CACHE_TTL);
+            cached++;
+          }
+        } catch {}
+      });
+
+      await Promise.all(promises);
+    }
+  }
+
+  return cached;
+}
+
+/**
+ * Check OSRM availability.
+ */
+export async function isOrmAvailable(): Promise<boolean> {
+  try {
+    const resp = await fetch(OSRM_BASE + "/route/v1/driving/116.38,39.90;116.40,39.91?overview=false");
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}

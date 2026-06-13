@@ -330,6 +330,7 @@ export async function computeCoverage(
     // ---- Triangulation KPI ----
     const triMetrics = await computeTriangulationMetrics(projectId, radiusMeters, opts?.industry);
 
+    
     // ---- Decision advice ----
     const pointCountRow = await db.oneOrNone(
       `SELECT COUNT(*)::INTEGER AS cnt FROM spatial_points WHERE project_id = $1${industryFilter}`,
