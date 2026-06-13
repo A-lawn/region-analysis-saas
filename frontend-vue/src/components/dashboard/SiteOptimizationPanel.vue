@@ -76,7 +76,6 @@ import TaskProgress from '@/components/shared/TaskProgress.vue'
 import type { SiteOptimizationResult, TaskInfo } from '@/types'
 import axios from 'axios'
 
-industryStore.fetchIndustries()
 
 const props = defineProps<{
   projectId: string
@@ -89,6 +88,7 @@ const emit = defineEmits<{
 
 
 const industryStore = useIndustryStore()
+industryStore.fetchIndustries()
 
 function onIndustryChange() {
   if (!industry.value) return
