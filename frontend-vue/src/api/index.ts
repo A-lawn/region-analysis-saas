@@ -128,3 +128,14 @@ export async function purgeProject(projectId: string, removeBackup: boolean = fa
   return data
 }
 
+
+// ===== Industry APIs (v2.0) =====
+export async function getIndustries(): Promise<{ models: any[] }> {
+  const { data } = await apiClient.get('/industries')
+  return data
+}
+
+export async function getIndustryConfig(industry: string): Promise<any> {
+  const { data } = await apiClient.get('/industries/' + industry + '/model')
+  return data
+}

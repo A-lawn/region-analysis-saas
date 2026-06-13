@@ -29,6 +29,7 @@ import { aggregateByH3 } from "../utils/h3Index";
 import { computeVoronoi } from "../services/voronoiService";
 import { getTaskStatus } from "../services/analysisService";
 import { backupProject, listBackups, restoreProject, removeBackupFile, ensureBackupDir } from "../services/backupService";
+import { loadAllIndustryConfigs, loadIndustryConfig } from "../services/analysis/industryLoader";
 
 const router = Router();
 

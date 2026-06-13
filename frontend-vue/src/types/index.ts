@@ -167,3 +167,29 @@ export interface DeletedProject {
   daysRemaining: number
   sourceCrs: string
 }
+
+
+// ===== Industry Configuration (v2.0) =====
+export interface IndustryConfig {
+  industry: string
+  displayName: string
+  radiusMeters: number
+  weights: Record<string, number>
+  kpiWeights: Record<string, number>
+  keywords: string[]
+  analysisParams: {
+    coverage: { radiusMeters: number }
+    competition: { nearRadiusM: number; farRadiusM: number; normalization: Record<string, any> }
+    scoring: { distanceNormalizeM: number; densityNormalizeCount: number; blindspotNormalizeM: number }
+    kde: { bandwidthM: number; gridSizeM: number; maxGridCells: number; cutoffFactor: number }
+    cluster: { epsM: number; minPoints: number }
+  }
+  decisionThresholds: Record<string, any>
+  benchmarks: Record<string, any>
+}
+
+export interface IndustryListItem {
+  industry: string
+  label: string
+  radiusMeters: number
+}
