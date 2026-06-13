@@ -4,7 +4,7 @@
       <button class="btn-back" @click="router.push({ name: 'dashboard', params: { id: projectId } })">
         <AppIcon name="chevron-left" :size="16" />返回
       </button>
-      <h2>分析报告</h2>
+      <h2 class="no-print">分析报告</h2><h2 class="print-only">区域数据分析平台 — 分析报告</h2>
       <button class="btn btn-primary btn-sm" @click="doPrint">
         <AppIcon name="printer" :size="14" />打印 / 导出 PDF
       </button>
@@ -210,6 +210,8 @@ onMounted(async () => {
 .report-view { max-width: 860px; margin: 0 auto; padding: var(--space-10) var(--space-5); }
 .report-header { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); flex-wrap: wrap; }
 .report-header h2 { flex: 1; margin: 0; font-size: var(--text-xl); font-weight: var(--font-bold); letter-spacing: -0.02em; }
+.print-only { display: none; }
+@media print { .print-only { display: block; text-align: center; font-size: 18px; margin-bottom: 20px; } }
 .loading, .error { text-align: center; padding: var(--space-10); color: var(--color-text-secondary); }
 .error { color: var(--color-error); }
 .report-section {
@@ -242,8 +244,34 @@ onMounted(async () => {
 .weight-badge { font-size: var(--text-xs); padding: var(--space-1) var(--space-2); background: var(--color-accent-subtle); border-radius: var(--radius-sm); color: var(--color-text-primary); }
 
 @media print {
+  @page {
+    margin: 1.5cm 1.8cm;
+    size: A4;
+  }
+  /* Remove browser default header/footer (URL, page number, date) */
+  /* These are controlled by the user's print dialog settings, but we can suppress via CSS */
+  html, body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .no-print { display: none; }
   .report-view { padding: 0; max-width: 100%; }
-  .report-section { box-shadow: none; border: 1px solid #ddd; background: #fff; backdrop-filter: none; }
+  .report-section {
+    box-shadow: none; border: 1px solid #ddd; background: #fff; backdrop-filter: none;
+    page-break-inside: avoid;
+  }
+  .report-section h3 { break-after: avoid; }
+  .report-header { display: none; }
+  /* Custom page header/footer via fixed-position elements */
+  .report-content::before {
+    content: "区域数据分析平台 — 分析报告";
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    color: #999;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+  }
 }
 </style>
