@@ -321,38 +321,31 @@ router.get("/tasks/:taskId", authRequired, async (req: Request, res: Response) =
 });
 
 // ---- GET /api/web/industries (auth required) ----
+// Returns 12 industries with camelCase fields matching frontend store expectations
 router.get("/industries", authRequired, async (_req: Request, res: Response) => {
-  try {
-    const configs = await loadAllIndustryConfigs();
-    if (configs.length > 0) {
-      const models = configs.map(c => ({
-        id: c.industry,
-        industry: c.industry,
-        display_name: c.displayName,
-        radius_meters: c.radiusMeters,
-        weights: c.weights,
-        kpi_weights: c.kpiWeights,
-        keywords: c.keywords,
-        analysis_params: {
-          coverage: c.analysisParams.coverage,
-          competition: c.analysisParams.competition,
-          scoring: c.analysisParams.scoring,
-          kde: c.analysisParams.kde,
-          cluster: c.analysisParams.cluster,
-        },
-        decision_thresholds: c.decisionThresholds,
-        benchmarks: c.benchmarks,
-      }));
-      return res.json({ models, source: "IndustryConfigService" });
-    }
-  } catch (err: any) {
-    logger.warn({ error: err.message }, "[API] Fallback to DB");
-  }
   const db = require("../db").default;
-  const models = await db.manyOrNone(
-    "SELECT id, industry, display_name, COALESCE(radius_meters, 500) AS radius_meters, weights, kpi_weights, benchbarks as benchmarks FROM site_optimization_models ORDER BY sort_order ASC, display_name ASC"
+  const rows = await db.manyOrNone(
+    "SELECT id, industry, display_name, COALESCE(radius_meters, 500) AS radius_meters, COALESCE(weights::text, '{}') AS weights_text, COALESCE(kpi_weights::text, '{}') AS kpi_weights_text, COALESCE(benchbarks::text, '{}') AS benchbarks_text, COALESCE(decision_thresholds::text, '{}') AS decision_thresholds_text FROM site_optimization_models ORDER BY sort_order ASC, display_name ASC"
   );
-  res.json({ models, source: "database" });
+  const models = rows.map((r: any) => {
+    let weights = {}; let kpiWeights = {}; let benchmarks = {}; let decisionThresholds = {};
+    try { weights = typeof r.weights_text === 'string' ? JSON.parse(r.weights_text) : r.weights_text; } catch {}
+    try { kpiWeights = typeof r.kpi_weights_text === 'string' ? JSON.parse(r.kpi_weights_text) : r.kpi_weights_text; } catch {}
+    try { benchmarks = typeof r.benchbarks_text === 'string' ? JSON.parse(r.benchbarks_text) : r.benchbarks_text; } catch {}
+    try { decisionThresholds = typeof r.decision_thresholds_text === 'string' ? JSON.parse(r.decision_thresholds_text) : r.decision_thresholds_text; } catch {}
+    return {
+      id: r.id,
+      industry: r.industry,
+      displayName: r.display_name,
+      radiusMeters: parseInt(r.radius_meters) || 500,
+      weights: (weights as any).kpi_mapping || weights,
+      kpiWeights,
+      benchmarks,
+      decisionThresholds,
+      keywords: [],
+    };
+  });
+  res.json({ models });
 });
 
 // ---- GET /api/web/industries/:id/model (auth required) ----
