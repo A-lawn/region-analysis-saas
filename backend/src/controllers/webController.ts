@@ -41,12 +41,33 @@ function getTenantId(req: Request): string {
   return (req as any).tenantId || "default";
 }
 
+// ---- Safe filename decode: handle Latin-1 → UTF-8 encoding issues on Windows ----
+function safeFileName(originalname: string): string {
+  try {
+    // Detect if the string looks like it was Latin-1 encoded UTF-8
+    // Latin-1 encoded Chinese chars appear as Ã¥Â¤Â§ etc.
+    if (/[ÃÂÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß]/.test(originalname)) {
+      // Try to decode from Latin-1 bytes back to UTF-8
+      const latin1Bytes = Buffer.from(originalname, "latin1");
+      const utf8Decoded = latin1Bytes.toString("utf-8");
+      // Only use if it decodes to valid Chinese/Multibyte
+      if (/[一-鿿]/.test(utf8Decoded)) {
+        return utf8Decoded;
+      }
+    }
+    // Already UTF-8 or ASCII
+    return originalname;
+  } catch {
+    return originalname;
+  }
+}
+
 // ---- Multer for file uploads ----
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.upload.maxFileSizeMB * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const ext = file.originalname.toLowerCase();
+    const ext = safeFileName(file.originalname).toLowerCase();
     if (ext.endsWith(".xlsx") || ext.endsWith(".xls") || ext.endsWith(".csv")) {
       cb(null, true);
     } else {
@@ -76,7 +97,7 @@ router.post("/upload", authRequired, upload.single("file"), validateUpload, asyn
   const errors = validateDetection(detection);
 
   const uploadId = uuidv4();
-  uploadSessions.set(uploadId, { data: rows, headers, sourceCrs, fileName: req.file.originalname });
+  uploadSessions.set(uploadId, { data: rows, headers, sourceCrs, fileName: safeFileName(req.file.originalname) });
 
   // Auto-clean expired sessions (older than 10 min)
   const now = Date.now();
@@ -93,7 +114,7 @@ router.post("/upload", authRequired, upload.single("file"), validateUpload, asyn
 
   res.json({
     uploadId,
-    fileName: req.file.originalname,
+    fileName: safeFileName(req.file.originalname),
     sheetName,
     sourceCrs,
     totalRows: rows.length,
