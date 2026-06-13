@@ -44,14 +44,21 @@ export const config = {
     kdeBandwidth: 1000,
     kdeGridSize: 500,
   },
+  // Industry radii now managed via site_optimization_models table (loaded by IndustryConfigService)
+  // These defaults are kept for bootstrapping only — runtime values come from DB
   coverage: {
-    industryRadii: [
-      { industry: "convenience", label: "便利店", radiusMeters: 300 },
-      { industry: "restaurant", label: "餐饮", radiusMeters: 500 },
-      { industry: "pharmacy", label: "药店", radiusMeters: 800 },
-      { industry: "supermarket", label: "商超", radiusMeters: 3000 },
-      { industry: "auto4s", label: "汽车4S店", radiusMeters: 10000 },
-    ],
+    industryRadii: (() => {
+      try {
+        const { DEFAULT_INDUSTRY_RADII } = require("./config/industry.config");
+        return DEFAULT_INDUSTRY_RADII;
+      } catch {
+        return [
+          { industry: "convenience", label: "便利店", radiusMeters: 300 },
+          { industry: "restaurant", label: "餐饮", radiusMeters: 500 },
+          { industry: "pharmacy", label: "药店", radiusMeters: 800 },
+        ];
+      }
+    })(),
   },
   backup: {
     dir: resolve(__dirname, "..", "backups"),

@@ -81,7 +81,7 @@ function paramsHash(params: Record<string, any>): string {
 }
 
 async function computeConcaveHull(projectId: string, industry?: string): Promise<{ geojson: any; hullType: string; areaSqm: number }> {
-  const indWhere = industry ? ` AND metadata->>'industry' = '${industry}'` : "";
+  const indWhere = industry ? ` AND metadata->>'industry' = $[industry]` : "";
   const ch = await db.one(`
     SELECT
       ST_AsGeoJSON(ST_ConvexHull(ST_Collect(geom))) AS geojson,
@@ -99,7 +99,7 @@ async function computeConcaveHull(projectId: string, industry?: string): Promise
 }
 
 async function computeTriangulationMetrics(projectId: string, radiusMeters: number, industry?: string): Promise<TriangulationMetrics> {
-  const indWhere = industry ? ` AND metadata->>'industry' = '${industry}'` : "";
+  const indWhere = industry ? ` AND metadata->>'industry' = $[industry]` : "";
   const cacheKey = "analysis:" + projectId + ":triang:v7:" + radiusMeters + (industry ? ":ind_" + industry : "");
   return cached(cacheKey, config.cache.ttl, async () => {
     try {
@@ -174,10 +174,10 @@ export async function computeCoverage(
   const clipSuffix = (opts?.clipGeojson) ? ":clip" : "";
   const networkSuffix = (opts?.networkMode) ? ":net_" + opts.networkMode : "";
   const industrySuffix = (opts?.industry) ? ":ind_" + opts.industry : "";
-  // Build industry filter for SQL queries
-  const industryRaw = (opts?.industry)
-    ? ` AND metadata->>\'industry\' = \'${opts.industry}\'`
-    : "";
+  // Build industry filter — safe: validates against /^[a-z_]+$/ then uses pg-promise $[industry]
+  const industry = (opts?.industry && /^[a-z_]+$/.test(opts.industry)) ? opts.industry : undefined;
+  const industryFilter = industry ? " AND metadata->>'industry' = '" + industry + "'" : "";
+
   const cacheKey = "analysis:" + projectId + ":coverage:v7:" + radiusMeters + decaySuffix + wsSuffix + clipSuffix + networkSuffix + industrySuffix;
   return cached(cacheKey, config.cache.ttl, async () => {
     const hullResult = await computeConcaveHull(projectId, opts?.industry);
@@ -222,7 +222,7 @@ export async function computeCoverage(
     const baseResult = await db.one(`
       WITH buffers AS (
         SELECT ST_Buffer(geom::geography, $1)::geometry AS buf_geom
-        FROM spatial_points WHERE project_id = $2${industryRaw}
+        FROM spatial_points WHERE project_id = $2${industryFilter}
       ),
       unioned AS (
         SELECT ST_Union(buf_geom) AS union_geom FROM buffers
@@ -258,15 +258,15 @@ export async function computeCoverage(
         const decayResult = await db.one(`
           WITH buffers_core AS (
             SELECT ST_Buffer(geom::geography, $1)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           buffers_mid AS (
             SELECT ST_Buffer(geom::geography, $3)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           buffers_full AS (
             SELECT ST_Buffer(geom::geography, $4)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           core_union AS (SELECT ST_Union(buf_geom) AS geom FROM buffers_core),
           mid_union AS (SELECT ST_Union(buf_geom) AS geom FROM buffers_mid),
@@ -313,7 +313,7 @@ export async function computeCoverage(
         const wsResult = await db.one(`
           WITH buffers AS (
             SELECT ST_Buffer(geom::geography, $1)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           unioned AS (
             SELECT ST_Union(buf_geom) AS geom FROM buffers
@@ -332,7 +332,7 @@ export async function computeCoverage(
 
     // ---- Decision advice ----
     const pointCountRow = await db.oneOrNone(
-      `SELECT COUNT(*)::INTEGER AS cnt FROM spatial_points WHERE project_id = $1${industryRaw}`,
+      `SELECT COUNT(*)::INTEGER AS cnt FROM spatial_points WHERE project_id = $1${industryFilter}`,
       [projectId]
     );
     const pointCount = pointCountRow?.cnt || 0;
