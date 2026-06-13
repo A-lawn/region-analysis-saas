@@ -22,8 +22,9 @@ export const useIndustryStore = defineStore('industry', () => {
     loading.value = true
     error.value = null
     try {
-      const { models } = await getIndustries()
+      const { models, kpiDisplayNames: kpiNames } = await getIndustries()
       industries.value = models
+      if (kpiNames) kpiDisplayNames.value = kpiNames
     } catch (e: any) {
       error.value = e.message || '加载行业配置失败'
       console.error('[IndustryStore]', e)
@@ -42,6 +43,7 @@ export const useIndustryStore = defineStore('industry', () => {
 
   return {
     industries,
+    kpiDisplayNames,
     loading,
     error,
     industryList,
