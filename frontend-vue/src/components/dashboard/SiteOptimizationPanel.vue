@@ -155,7 +155,9 @@ async function runAnalysis() {
     task.value = { taskId: '', status: 'completed', result: data }
     emit('result', data)
   } catch (e: any) {
-    task.value = { taskId: '', status: 'failed', error: e.message }
+    const code = e?.response?.data?.code || '';
+    const msg = e?.response?.data?.error || e.message;
+    task.value = { taskId: '', status: 'failed', error: msg, code }
   }
 }
 </script>

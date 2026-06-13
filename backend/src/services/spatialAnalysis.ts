@@ -4,6 +4,7 @@ import { cacheGet, cacheSet } from "./cacheService";
 import crypto from "crypto";
 import { batchCompetitionAnalysis } from "./competitionService";
 import { generateAdvice } from "./decisionEngine";
+import { AppError } from "../middleware/errorHandler";
 import { batchNormalizeKpis, weightedSum } from "./analysis/kpiNormalizer";
 import type { KpiNormalizerEntry, KpiValueMap } from "./analysis/kpiNormalizer";
 
@@ -191,9 +192,9 @@ export async function computeCoverage(
         [projectId]
       );
       const noDataMsg = opts?.industry
-        ? `No points found for industry "${opts.industry}"`
-        : "No spatial points in project";
-      throw new Error(noDataMsg);
+        ? `当前数据中未找到行业为"${opts.industry}"的门店数据，请切换为"全部行业"后重试`
+        : "该项目没有空间点位数据，请先上传数据";
+      throw new AppError(422, noDataMsg, opts?.industry ? "INDUSTRY_MISMATCH" : "NO_SPATIAL_DATA");
     }
 
     // Determine the analysis boundary

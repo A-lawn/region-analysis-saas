@@ -7,7 +7,7 @@
     <div v-if="task.status === 'running'" class="progress-bar">
       <div class="progress-fill"></div>
     </div>
-    <div v-if="task.status === 'failed'" class="task-error">
+    <div v-if="task.status === 'failed'" class="task-error" :class="{ 'task-warn': task.code === 'INDUSTRY_MISMATCH' || task.code === 'NO_SPATIAL_DATA' }">
       {{ task.error }}
     </div>
   </div>
@@ -105,6 +105,7 @@ const statusText = computed(() => {
   100% { width: 10%; }
 }
 
+.task-warn { color: var(--color-warning); background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.15); }
 .task-error {
   margin-top: var(--space-2);
   color: var(--color-error);

@@ -88,6 +88,10 @@
       </div>
     </div>
     <TaskProgress v-if="task" :task="task" />
+    <div v-if="industryMismatchError" class="mismatch-warn">
+      ⚠ {{ industryMismatchError }}
+      <button class="btn btn-sm" @click="selectedIndustry = ''; industryMismatchError = ''; runAnalysis()">切换为全部行业</button>
+    </div>
     <div v-if="result" class="result-section">
       <template v-if="Array.isArray(result)">
         <div v-if="selectedIndustry && !result[0]?.triangulation?.totalEdges" class="empty-industry-warn">
@@ -264,6 +268,7 @@ const clipBoundaryName = ref('')
 const networkMode = ref('')
 const industryStore = useIndustryStore()
 const selectedIndustry = ref('')
+const industryMismatchError = ref('')
 const result = ref<CoverageResult | CoverageResult[] | null>(null)
 const expandedRadii = ref<boolean[]>([true, true, true])
 
@@ -413,6 +418,7 @@ function onUpdate(v: Record<string, number>) {
 }
 
 async function runAnalysis() {
+    industryMismatchError.value = ''
   task.value = { taskId: '', status: 'running' }
   try {
     const clip = enableClip.value ? clipGeojson.value : undefined
@@ -452,7 +458,14 @@ async function runAnalysis() {
       }
     }
   } catch (e: any) {
-    task.value = { taskId: '', status: 'failed', error: e.message }
+    const code = e?.response?.data?.code || '';
+    if (code === 'INDUSTRY_MISMATCH' || code === 'NO_SPATIAL_DATA') {
+      // Friendly user-facing error, not a server failure
+      task.value = { taskId: '', status: 'failed', error: e.response?.data?.error || e.message }
+      industryMismatchError.value = e.response?.data?.error || '数据与所选行业不匹配'
+    } else {
+      task.value = { taskId: '', status: 'failed', error: e.message }
+    }
   }
 }
 </script>
@@ -523,4 +536,6 @@ async function runAnalysis() {
 .preset-hint { font-size: var(--text-xs); color: var(--color-text-tertiary); margin-top: 2px; font-style: italic; }
 .empty-industry-warn { margin: var(--space-3) 0; padding: var(--space-3); background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.2); border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--color-text-primary); line-height: 1.5; }
 .empty-industry-hint { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+.mismatch-warn { margin: var(--space-3) 0; padding: var(--space-3); background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.2); border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--color-text-primary); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.mismatch-warn .btn { white-space: nowrap; }
 </style>
