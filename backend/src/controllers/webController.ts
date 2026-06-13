@@ -322,17 +322,74 @@ router.get("/tasks/:taskId", authRequired, async (req: Request, res: Response) =
 
 // ---- GET /api/web/industries (auth required) ----
 router.get("/industries", authRequired, async (_req: Request, res: Response) => {
+  try {
+    const configs = await loadAllIndustryConfigs();
+    if (configs.length > 0) {
+      const models = configs.map(c => ({
+        id: c.industry,
+        industry: c.industry,
+        display_name: c.displayName,
+        radius_meters: c.radiusMeters,
+        weights: c.weights,
+        kpi_weights: c.kpiWeights,
+        keywords: c.keywords,
+        analysis_params: {
+          coverage: c.analysisParams.coverage,
+          competition: c.analysisParams.competition,
+          scoring: c.analysisParams.scoring,
+          kde: c.analysisParams.kde,
+          cluster: c.analysisParams.cluster,
+        },
+        decision_thresholds: c.decisionThresholds,
+        benchmarks: c.benchmarks,
+      }));
+      return res.json({ models, source: "IndustryConfigService" });
+    }
+  } catch (err: any) {
+    logger.warn({ error: err.message }, "[API] Fallback to DB");
+  }
   const db = require("../db").default;
-  const models = await db.manyOrNone("SELECT id, industry, display_name, weights, description FROM site_optimization_models WHERE is_default = true ORDER BY display_name");
-  res.json({ models });
+  const models = await db.manyOrNone(
+    "SELECT id, industry, display_name, COALESCE(radius_meters, 500) AS radius_meters, weights, kpi_weights, benchbarks as benchmarks FROM site_optimization_models ORDER BY sort_order ASC, display_name ASC"
+  );
+  res.json({ models, source: "database" });
 });
 
 // ---- GET /api/web/industries/:id/model (auth required) ----
 router.get("/industries/:id/model", authRequired, async (req: Request, res: Response) => {
-  const db = require("../db").default;
-  const model = await db.oneOrNone("SELECT id, industry, display_name, weights, description FROM site_optimization_models WHERE id = $[id]", { id: req.params.id });
-  if (!model) throw new AppError(404, "模型不存在", "MODEL_NOT_FOUND");
-  res.json(model);
+  try {
+    const param = req.params.id;
+    const isUuid = /^[0-9a-f-]{36}$/i.test(param);
+    const db = require("../db").default;
+    const row = await db.oneOrNone(
+      isUuid ? "SELECT industry FROM site_optimization_models WHERE id = $[id]" : "SELECT industry FROM site_optimization_models WHERE industry = $[industry]",
+      isUuid ? { id: param } : { industry: param }
+    );
+    if (!row) throw new AppError(404, "模型不存在", "MODEL_NOT_FOUND");
+    const config = await loadIndustryConfig(row.industry);
+    if (!config) throw new AppError(404, "模型配置加载失败", "MODEL_LOAD_FAILED");
+    return res.json({
+      id: config.industry,
+      industry: config.industry,
+      display_name: config.displayName,
+      radius_meters: config.radiusMeters,
+      weights: config.weights,
+      kpi_weights: config.kpiWeights,
+      keywords: config.keywords,
+      analysis_params: config.analysisParams,
+      decision_thresholds: config.decisionThresholds,
+      benchmarks: config.benchmarks,
+    });
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    const db = require("../db").default;
+    const model = await db.oneOrNone(
+      "SELECT id, industry, display_name, radius_meters, weights, kpi_weights, benchbarks as benchmarks FROM site_optimization_models WHERE id = $[id] OR industry = $[industry]",
+      { id: req.params.id, industry: req.params.id }
+    );
+    if (!model) throw new AppError(404, "模型不存在", "MODEL_NOT_FOUND");
+    res.json(model);
+  }
 });
 
 
