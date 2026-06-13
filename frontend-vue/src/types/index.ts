@@ -162,7 +162,6 @@ export interface DeletedProject {
   projectId: string
   deletedAt: string
   pointCount: number
-  filePath: string
   expiresAt: string
   daysRemaining: number
   sourceCrs: string

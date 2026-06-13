@@ -102,7 +102,6 @@ export interface DeletedProject {
   projectId: string
   deletedAt: string
   pointCount: number
-  filePath: string
   expiresAt: string
   daysRemaining: number
   sourceCrs: string
@@ -123,8 +122,13 @@ export async function restoreProject(projectId: string): Promise<{ projectId: st
   return data
 }
 
-export async function purgeProject(projectId: string, removeBackup: boolean = false): Promise<{ purged: boolean }> {
-  const { data } = await apiClient.delete('/projects/deleted/purge', { data: { projectId, removeBackup } })
+export async function purgeProject(projectId: string): Promise<{ purged: boolean }> {
+  const { data } = await apiClient.delete('/projects/deleted/purge', { data: { projectId } })
+  return data
+}
+
+export async function purgeAllDeletedProjects(): Promise<{ purged: number }> {
+  const { data } = await apiClient.delete('/projects/deleted/purge-all')
   return data
 }
 

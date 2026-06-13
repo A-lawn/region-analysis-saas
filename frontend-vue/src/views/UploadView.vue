@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="upload-view">
     <div class="hero">
       <h1>上传数据，开始分析</h1>
@@ -243,7 +243,34 @@
                 </div>
               </div>
               <div v-if="projectStore.deletedProjects.length > 0" class="sheet-footer">
-                备份文件将在 {{ retentionDays }} 天后自动清理
+                <button
+                  class="btn btn-sm btn-danger-solid"
+                  style="width:100%"
+                  @click="showPurgeAllConfirm = true"
+                >
+                  <AppIcon name="trash" :size="14" />
+                  一键清理全部 ({{ projectStore.deletedProjects.length }} 项)
+                </button>
+                <span style="margin-top: var(--space-2); display: block;">备份文件将在 {{ retentionDays }} 天后自动清理</span>
+                </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- Purge All Confirm Sheet -->
+      <Teleport to="#app-root">
+        <Transition name="sheet">
+          <div v-if="showPurgeAllConfirm" class="sheet-overlay" @click.self="showPurgeAllConfirm = false">
+            <div class="delete-confirm-panel">
+              <div class="delete-confirm-icon">
+                <AppIcon name="alert" :size="24" color="var(--color-error)" />
+              </div>
+              <p class="delete-confirm-title">清空回收站</p>
+              <p class="delete-confirm-danger">将永久删除回收站中的全部 {{ projectStore.deletedProjects.length }} 个项目，此操作不可恢复</p>
+              <div class="delete-confirm-actions">
+                <button class="btn btn-cancel" @click="showPurgeAllConfirm = false">取消</button>
+                <button class="btn btn-delete btn-delete-danger" @click="doPurgeAll">确认清空</button>
               </div>
             </div>
           </div>
@@ -261,12 +288,8 @@
               <p class="delete-confirm-title">永久删除项目</p>
               <p class="delete-confirm-name">{{ showPurgeConfirm.projectName }}</p>
               <p class="delete-confirm-danger">此操作不可逆，所有关联数据将被永久删除</p>
-              <label class="delete-confirm-checkbox">
-                <input type="checkbox" v-model="purgeRemoveBackup" />
-                同时删除备份文件
-              </label>
               <div class="delete-confirm-actions">
-                <button class="btn btn-cancel" @click="showPurgeConfirm = null; purgeRemoveBackup = false">取消</button>
+                <button class="btn btn-cancel" @click="showPurgeConfirm = null">取消</button>
                 <button class="btn btn-delete btn-delete-danger" @click="doPurgeProject">确认删除</button>
               </div>
             </div>
@@ -313,9 +336,9 @@ const loadingProjects = ref(false)
 // Recycle bin state
 const showDeleteConfirm = ref<any>(null)
 const showRecycleBin = ref(false)
+const showPurgeAllConfirm = ref(false)
 const showPurgeConfirm = ref<DeletedProject | null>(null)
 const purgeRemoveBackup = ref(false)
-const restoringId = ref<string | null>(null)
 const retentionDays = ref(180)
 const totalProjects = ref(0)
 const currentPage = ref(1)
@@ -473,12 +496,21 @@ async function doPurgeProject() {
   const d = showPurgeConfirm.value
   showPurgeConfirm.value = null
   try {
-    await projectStore.purgeDeletedProject(d.projectId, purgeRemoveBackup.value)
-    show('项目已永久删除', 'success')
+    await projectStore.purgeDeletedProject(d.projectId)
   } catch (e: any) {
     show(e.message || '删除失败', 'error')
-  } finally {
-    purgeRemoveBackup.value = false
+  }
+}
+
+async function doPurgeAll() {
+  showPurgeAllConfirm.value = false
+  const count = projectStore.deletedProjects.length
+  try {
+    await projectStore.purgeAllDeletedProjects()
+    show(`已清理 ${count} 个项目`, 'success')
+    showRecycleBin.value = false
+  } catch (e: any) {
+    show(e.message || '清理失败', 'error')
   }
 }
 
@@ -1165,8 +1197,3 @@ onMounted(async () => {
   margin: 0;
 }
 </style>
-
-
-
-
-

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ProjectSummary, SpatialPoint, DeletedProject } from '@/types'
-import { listProjects, getProjectSummary, getPoints, deleteProject as apiDeleteProject, listDeletedProjects, restoreProject as apiRestoreProject, purgeProject as apiPurgeProject } from '@/api'
+import { listProjects, getProjectSummary, getPoints, deleteProject as apiDeleteProject, listDeletedProjects, restoreProject as apiRestoreProject, purgeProject as apiPurgeProject, purgeAllDeletedProjects as apiPurgeAllDeletedProjects } from '@/api'
 
 export const useProjectStore = defineStore('project', () => {
   const projects = ref<any[]>([])
@@ -97,9 +97,17 @@ export const useProjectStore = defineStore('project', () => {
     await fetchProjects()
   }
 
-  async function purgeDeletedProject(projectId: string, removeBackup: boolean = false) {
-    await apiPurgeProject(projectId, removeBackup)
+  async function purgeDeletedProject(projectId: string) {
+    await apiPurgeProject(projectId)
     deletedProjects.value = deletedProjects.value.filter((p) => p.projectId !== projectId)
+  }
+
+  async function purgeAllDeletedProjects() {
+    const result = await apiPurgeAllDeletedProjects()
+    if (result.purged > 0) {
+      deletedProjects.value = []
+    }
+    return result
   }
 
   return {
@@ -123,5 +131,6 @@ export const useProjectStore = defineStore('project', () => {
     fetchDeletedProjects,
     restoreDeletedProject,
     purgeDeletedProject,
+    purgeAllDeletedProjects,
   }
 })

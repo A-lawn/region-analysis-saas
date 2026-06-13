@@ -475,7 +475,8 @@ router.delete("/projects/:id", authRequired, async (req: Request, res: Response)
 // ---- GET /api/web/projects/deleted (recycle bin list, auth required) ----
 router.get("/projects/deleted", authRequired, async (req: Request, res: Response) => {
   const backups = await listBackups(getTenantId(req));
-  res.json({ backups });
+  // Strip server file paths before returning to client
+  res.json({ backups: backups.map(({ filePath, ...rest }) => rest) });
 });
 
 // ---- POST /api/web/projects/:id/restore (restore from backup, auth required) ----
@@ -493,8 +494,8 @@ router.post("/projects/:id/restore", authRequired, async (req: Request, res: Res
 
 // ---- DELETE /api/web/projects/deleted/purge (hard-delete, auth required) ----
 router.delete("/projects/deleted/purge", authRequired, async (req: Request, res: Response) => {
+  const { projectId } = req.body;
   const db = require("../db").default;
-  const { projectId, removeBackup } = req.body;
   if (!projectId) throw new AppError(400, "缺少 projectId", "MISSING_PROJECT_ID");
 
   // Verify project is soft-deleted
@@ -506,20 +507,47 @@ router.delete("/projects/deleted/purge", authRequired, async (req: Request, res:
 
   // Hard delete (CASCADE removes associated data)
   await db.none("DELETE FROM analysis_projects WHERE id = $[id]", { id: projectId });
-
-  // Optionally remove backup file
-  if (removeBackup) {
-    const tenantId = getTenantId(req);
-    const backups = await listBackups(tenantId);
-    const match = backups.find((b: any) => b.projectId === projectId);
-    if (match) {
-      await removeBackupFile(match.filePath);
-    }
+  // Also remove backup file
+  const _tenantId = getTenantId(req);
+  const _backups = await listBackups(_tenantId);
+  const _match = _backups.find((b: any) => b.projectId === projectId);
+  if (_match) {
+    await removeBackupFile(_match.filePath);
   }
 
   res.json({ purged: true });
 });
 
+
+
+
+// ---- DELETE /api/web/projects/deleted/purge-all (batch hard-delete all deleted projects, auth required) ----
+router.delete("/projects/deleted/purge-all", authRequired, async (req: Request, res: Response) => {
+  const db = require("../db").default;
+  const tenantId = getTenantId(req);
+
+  const projects = await db.manyOrNone(
+    "SELECT id FROM analysis_projects WHERE tenant_id = $[tenantId] AND deleted_at IS NOT NULL",
+    { tenantId }
+  );
+
+  if (!projects || projects.length === 0) {
+    res.json({ purged: 0 });
+    return;
+  }
+
+  const ids = projects.map((p: any) => p.id);
+  await db.none("DELETE FROM analysis_projects WHERE id IN ($[ids:csv])", { ids });
+  // Also remove backup files
+  const backups = await listBackups(tenantId);
+  for (const b of backups) {
+    if (ids.includes(b.projectId)) {
+      await removeBackupFile(b.filePath);
+    }
+  }
+
+  res.json({ purged: ids.length });
+});
 
 // ---- GET /projects/:id/analysis/coverage/export (auth required) ----
 router.get("/projects/:id/analysis/coverage/export", authRequired, analysisLimiter, async (req: Request, res: Response) => {
