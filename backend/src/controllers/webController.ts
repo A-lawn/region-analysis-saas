@@ -536,4 +536,15 @@ router.get("/projects/:id/analysis/coverage/export", authRequired, analysisLimit
   return res.json(exportGeojson);
 });
 
+
+// ---- GET /api/web/transit/quota (auth required) ----
+router.get("/transit/quota", authRequired, async (_req: Request, res: Response) => {
+  try {
+    const { getTransitQuotaStats } = require("../services/routingService");
+    res.json(getTransitQuotaStats());
+  } catch {
+    res.json({ used: 0, limit: 4500, remaining: 4500, estimated: false });
+  }
+});
+
 export default router;

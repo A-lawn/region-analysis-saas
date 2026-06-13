@@ -196,28 +196,53 @@ export async function isOrmAvailable(): Promise<boolean> {
 }
 
 
-// ===== Transit Routing (Public Transit) =====
-// OSRM does not support transit. For bus+subway routing, we use:
-// - City-level transit network data (pre-loaded per city)
-// - Haversine-based estimation with transit speed factors as fallback
+// ===== Transit Routing (Public Transit via Amap API) =====
+// Uses Amap transit/integrated endpoint for real bus+subway routing.
+// Falls back to speed estimation when API unavailable or quota exceeded.
 
-const TRANSIT_SPEEDS: Record<string, number> = {
-  bus: 300,       // meters per minute (~18 km/h)
-  subway: 720,    // meters per minute (~43 km/h)
-  "bus+subway": 450, // blended
-};
+import { config } from "../config";
+import logger from "../utils/logger";
+
+const AMAP_TRANSIT_URL = "https://restapi.amap.com/v3/direction/transit/integrated";
+
+// Daily call counter (in-memory, resets on restart — for production use Redis)
+let dailyTransitCalls = 0;
+let callDate = new Date().toDateString();
+const MAX_DAILY_TRANSIT = 4500; // Leave 500 buffer for other APIs (personal: 5000/day)
+
 
 export interface TransitRouteResult {
   distanceMeters: number;
   durationMinutes: number;
   mode: TransitMode;
   transfers: number;
-  estimated: boolean; // true if using speed estimation rather than real transit data
+  estimated: boolean; // true = fallback estimation used
+  costYuan?: number;   // transit fare from Amap
+}
+
+// Speed factors for fallback estimation (meters per minute)
+const TRANSIT_SPEEDS: Record<string, number> = {
+  bus: 300,
+  subway: 720,
+  "bus+subway": 450,
+};
+
+/**
+ * Check daily quota and reset counter at midnight.
+ */
+function checkDailyQuota(): boolean {
+  const today = new Date().toDateString();
+  if (today !== callDate) { dailyTransitCalls = 0; callDate = today; }
+  if (dailyTransitCalls >= MAX_DAILY_TRANSIT) {
+    logger.warn({ dailyTransitCalls }, "[Transit] Daily quota reached, using estimation");
+    return false;
+  }
+  return true;
 }
 
 /**
- * Estimate transit travel time using city-specific factors.
- * For production, integrate with OpenTripPlanner or similar GTFS-based engine.
+ * Get transit route via Amap transit/integrated API.
+ * Falls back to estimation when API unavailable or quota exceeded.
  */
 export async function getTransitRoute(
   from: { lng: number; lat: number },
@@ -225,38 +250,80 @@ export async function getTransitRoute(
   mode: TransitMode = "bus+subway",
   city?: string
 ): Promise<TransitRouteResult> {
-  // Check if city has transit data loaded
-  const transitAvailable = city ? await isTransitAvailable(city) : false;
-
-  if (transitAvailable) {
-    // Real transit routing via OpenTripPlanner or Valhalla
-    // TODO: integrate with OpenTripPlanner REST API
-    return estimateTransitRoute(from, to, mode, true);
+  // Check quota before calling
+  if (!checkDailyQuota()) {
+    return estimateTransitRoute(from, to, mode);
   }
 
-  return estimateTransitRoute(from, to, mode, false);
+  const key = config.amap.serverKey;
+  if (!key) {
+    logger.warn("[Transit] AMAP_SERVER_KEY not configured, using estimation");
+    return estimateTransitRoute(from, to, mode);
+  }
+
+  // Build city parameter — extract from coordinates if not provided
+  const resolvedCity = city || await resolveCity(from.lng, from.lat);
+
+  try {
+    const url = new URL(AMAP_TRANSIT_URL);
+    url.searchParams.set("key", key);
+    url.searchParams.set("origin", from.lng + "," + from.lat);
+    url.searchParams.set("destination", to.lng + "," + to.lat);
+    url.searchParams.set("city", resolvedCity || "北京");
+    url.searchParams.set("strategy", "0"); // 0=速度优先
+    url.searchParams.set("nightflag", "0");
+
+    dailyTransitCalls++;
+    const resp = await fetch(url.toString());
+    const data: any = await resp.json();
+
+    if (data.status === "1" && data.route?.transits?.length > 0) {
+      const transit = data.route.transits[0];
+      return {
+        distanceMeters: parseInt(transit.distance || "0"),
+        durationMinutes: Math.round(parseInt(transit.duration || "0") / 60),
+        mode,
+        transfers: transit.segments ? transit.segments.filter((s: any) => s.bus).length - 1 : 0,
+        estimated: false,
+        costYuan: parseFloat(transit.cost || "0") || undefined,
+      };
+    }
+
+    // API returned no results — fall through to estimation
+    if (data.status !== "1") {
+      logger.warn({ status: data.status, info: data.info }, "[Transit] Amap API returned non-1 status");
+    }
+  } catch (err: any) {
+    logger.warn({ error: err.message }, "[Transit] Amap API call failed");
+  }
+
+  return estimateTransitRoute(from, to, mode);
 }
 
-async function isTransitAvailable(city: string): Promise<boolean> {
+/**
+ * Resolve city name from coordinates using Amap regeo (cached).
+ */
+async function resolveCity(lng: number, lat: number): Promise<string | null> {
   try {
-    const resp = await fetch(
-      (process.env.TRANSIT_API_URL || "http://transit:8080") +
-      "/otp/routers/" + encodeURIComponent(city) + "/index/routes"
-    );
-    return resp.ok;
-  } catch {
-    return false;
-  }
+    const key = config.amap.serverKey;
+    if (!key) return null;
+    const url = "https://restapi.amap.com/v3/geocode/regeo?" +
+      "key=" + key + "&location=" + lng + "," + lat + "&extensions=base";
+    const resp = await fetch(url);
+    const data: any = await resp.json();
+    if (data.status === "1" && data.regeocode?.addressComponent?.city) {
+      return data.regeocode.addressComponent.city || null;
+    }
+  } catch {}
+  return null;
 }
 
 function estimateTransitRoute(
   from: { lng: number; lat: number },
   to: { lng: number; lat: number },
-  mode: TransitMode,
-  transitAvailable: boolean
+  mode: TransitMode
 ): TransitRouteResult {
   const straightDist = haversineDistance(from.lng, from.lat, to.lng, to.lat);
-  // Apply detour factor (~1.3x for bus, ~1.15x for subway vs straight line)
   const detourFactor = mode === "subway" ? 1.15 : 1.3;
   const routeDist = straightDist * detourFactor;
   const speed = TRANSIT_SPEEDS[mode] || 400;
@@ -267,13 +334,12 @@ function estimateTransitRoute(
     durationMinutes: Math.round(durationMin),
     mode,
     transfers: mode === "bus+subway" ? 2 : mode === "bus" ? 3 : 1,
-    estimated: !transitAvailable,
+    estimated: true,
   };
 }
 
 /**
- * Batch transit reachability: for a given point, estimate how far you can go
- * within maxMinutes using public transit.
+ * Batch transit reachability.
  */
 export async function getTransitReachability(
   center: { lng: number; lat: number },
@@ -288,5 +354,17 @@ export async function getTransitReachability(
   return {
     reachable: results.map(r => r.durationMinutes <= maxMinutes),
     durations: results.map(r => r.durationMinutes),
+  };
+}
+
+/**
+ * Get current daily transit API usage stats.
+ */
+export function getTransitQuotaStats(): { used: number; limit: number; remaining: number; estimated: boolean } {
+  return {
+    used: dailyTransitCalls,
+    limit: MAX_DAILY_TRANSIT,
+    remaining: MAX_DAILY_TRANSIT - dailyTransitCalls,
+    estimated: !checkDailyQuota(),
   };
 }
