@@ -21,28 +21,28 @@
 
 ## 项目结构
 
-`
+```
 区域数据分析/
 ├── backend/                    # Express TypeScript 后端
 │   ├── src/
 │   │   ├── config/            # 配置模块 (app/analysis/industry)
 │   │   ├── controllers/       # 路由控制器
 │   │   ├── services/          # 核心业务逻辑
-│   │   │   ├── analysis/      # 分析服务 (benchmark/hull/kpi正常izer/industryLoader)
+│   │   │   ├── analysis/      # 分析服务 (benchmark/hull/kpiNormalizer/industryLoader)
 │   │   │   ├── competitionService.ts
 │   │   │   ├── decisionEngine.ts
 │   │   │   ├── routingService.ts
 │   │   │   └── spatialAnalysis.ts
-│   │   ├── middleware/         # 中间件 (auth/quota/rateLimit/errorHandler/requestLogger)
+│   │   ├── middleware/         # 中间件
 │   │   ├── jobs/              # BullMQ 异步任务 + POI 采集器
 │   │   ├── workers/           # 任务执行器
-│   │   ├── utils/             # 工具函数 (coordTransform/columnDetector/desensitize/logger)
+│   │   ├── utils/             # 工具函数
 │   │   └── validators/        # 参数校验
 │   └── package.json
 ├── frontend-vue/              # Vue 3 + TypeScript 前端
 │   └── src/
 │       ├── views/             # 页面
-│       ├── components/        # 组件 (dashboard/shared/upload)
+│       ├── components/        # 组件
 │       ├── composables/       # useAmap / useToast
 │       ├── stores/            # Pinia (auth/project/analysis/industry)
 │       ├── api/               # axios 封装
@@ -56,7 +56,7 @@
 ├── sample-data/               # 测试数据
 ├── docker-compose.yml         # 服务编排 (含 OSRM)
 └── .env.example               # 环境变量示例
-`
+```
 
 ---
 
@@ -64,28 +64,24 @@
 
 ### OSRM 路网数据 (可选)
 
-`ash
-# 下载中国路网数据
+```bash
 wget https://download.geofabrik.de/asia/china-latest.osm.pbf
 
-# 预处理 (步行 + 驾车)
-docker run -t -v C:\Users\User\Documents\区域数据分析/china-latest.osm.pbf:/data/osm.pbf osrm/osrm-backend osrm-extract -p /opt/car.lua /data/osm.pbf
-docker run -t -v C:\Users\User\Documents\区域数据分析:/data osrm/osrm-backend osrm-partition /data/osrm-data.osrm
+docker run -t -v C:UsersUserDocuments区域数据分析/china-latest.osm.pbf:/data/osm.pbf osrm/osrm-backend osrm-extract -p /opt/car.lua /data/osm.pbf
+docker run -t -v C:UsersUserDocuments区域数据分析:/data osrm/osrm-backend osrm-partition /data/osrm-data.osrm
 
-# 启动 (含 OSRM)
 docker compose --profile with-osrm up -d
-`
+```
 
 ### 无 OSRM 模式
 
-`ash
+```bash
 cp .env.example .env
 # 编辑 .env 填入 JWT_SECRET、SMTP、高德 API Key
 docker compose up -d
 # 前端: http://localhost:8080
 # 后端: http://localhost:3000
-# 健康检查: http://localhost:3000/api/health
-`
+```
 
 ---
 
@@ -129,7 +125,7 @@ docker compose up -d
 
 - 步行/骑行/驾车 → OSRM 路网
 - 公交/地铁/公交+地铁 → 高德公交 API
-- 每日配额监控：/api/web/transit/quota
+- 每日配额监控: /api/web/transit/quota
 - Redis 缓存 (7 天 TTL)
 
 ### 5. POI 数据采集 v2.0
@@ -151,7 +147,7 @@ docker compose up -d
 
 - 请求日志中间件 (结构化 JSON + trace ID)
 - 隐私脱敏工具 (邮箱/手机/坐标/token 脱敏)
-- pplication_logs 表 + 保留策略
+- application_logs 表 + 保留策略
 - SQL 注入修复
 
 ### 8. 用户体验优化
@@ -167,13 +163,13 @@ docker compose up -d
 
 | 表名 | 说明 |
 |------|------|
-| site_optimization_models | 行业模型 (增加 analysis_params/decision_thresholds/benchbarks/kpi_weights/scoring_algorithm) |
+| site_optimization_models | 行业模型 (含 analysis_params/decision_thresholds/benchbarks/kpi_weights/scoring_algorithm) |
 | kpi_category_map | KPI 注册表 (42 个 KPI，含归一化类型/参数/数据源) |
 | industry_keywords | 行业关键词 (52 条，用于自动识别) |
 | poi_categories | POI 类别表 (40 个类别) |
 | poi_cities | POI 城市表 (12 个城市) |
-| nalysis_types | 分析类型注册表 |
-| pplication_logs | 应用日志 (含保留策略和脱敏规则) |
+| analysis_types | 分析类型注册表 |
+| application_logs | 应用日志 (含保留策略和脱敏规则) |
 
 ---
 
@@ -206,20 +202,20 @@ docker compose up -d
 
 ## 迁移脚本
 
-`
+```
 database/migrations/
-├── 001_extend_industry_models.sql    # 扩展行业模型字段
-├── 002_new_industries.sql            # 新增 7 个行业
-├── 003_analysis_types.sql            # 分析类型注册
-├── 004_industry_keywords.sql         # 行业关键词
-├── 005_poi_categories.sql            # POI 类别
-├── 006_industry_benchmarks.sql       # 行业基准数据
-├── 007_seed_kpi_registry.sql         # KPI 注册表 (42 个)
-├── 008_log_retention.sql             # 日志保留策略
-├── 009_poi_cities.sql                # POI 城市
-├── 010_unify_kpi_weights.sql         # KPI 权重统一
-└── 011_backfill_decision_thresholds.sql  # 决策阈值补全
-`
+├── 001_extend_industry_models.sql          # 扩展行业模型字段
+├── 002_new_industries.sql                  # 新增 7 个行业
+├── 003_analysis_types.sql                  # 分析类型注册
+├── 004_industry_keywords.sql               # 行业关键词
+├── 005_poi_categories.sql                  # POI 类别
+├── 006_industry_benchmarks.sql             # 行业基准数据
+├── 007_seed_kpi_registry.sql               # KPI 注册表 (42 个)
+├── 008_log_retention.sql                   # 日志保留策略
+├── 009_poi_cities.sql                      # POI 城市
+├── 010_unify_kpi_weights.sql               # KPI 权重统一
+└── 011_backfill_decision_thresholds.sql    # 决策阈值补全
+```
 
 ---
 
@@ -235,21 +231,21 @@ database/migrations/
 
 ## 版本历史
 
-### v2.0 (Current) — codex/v2.0-refactor
+### v2.0 (Current) — branch: codex/v2.0-refactor
 
 - 12 行业深度模型 + DB 可配置
-- KPI 归一化引擎 (42 KPI × 8 算法)
+- KPI 归一化引擎 (42 KPI x 8 算法)
 - 决策建议引擎 v2.0 (30 规则 + 行业阈值)
 - 路网等时圈 (6 种出行方式: OSRM + 高德公交)
-- POI 采集器 v2.0 (40 类别 × 12 城市)
+- POI 采集器 v2.0 (40 类别 x 12 城市)
 - 分析报告 v2.0 (多半径/基准对标/决策建议)
 - 日志系统 + 隐私脱敏
 - KPI 中文显示 + 行业不匹配友好提示
 - 安全审计: SQL 注入修复 / 请求日志 / 脱敏
 - 商业可用度: ~70%
 
-### v1.0 (MVP) — main
+### v1.0 (MVP) — branch: main
 
-- 端到端可用：覆盖分析 / 热力图 / 聚类 / 选址优化 / H3 / 上传 / 报告
+- 覆盖分析 / 热力图 / 聚类 / 选址优化 / H3 / 上传 / 报告
 - 5 行业硬编码模型
-- 软件用度: ~40%
+- 商业可用度: ~40%
