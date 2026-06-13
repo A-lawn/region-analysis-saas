@@ -189,9 +189,21 @@ router.get("/projects/:id/analysis/coverage", authRequired, analysisLimiter, val
 });
 
 router.get("/projects/:id/analysis/heatmap", authRequired, analysisLimiter, validateHeatmapParams, async (req: Request, res: Response) => {
-  const bandwidth = parseInt(req.query.bandwidth as string) || config.analysis.kdeBandwidth;
-  const gridSize = parseInt(req.query.gridSize as string) || config.analysis.kdeGridSize;
-  const points = await computeKDEHeatmap(req.params.id, bandwidth, gridSize);
+  const bandwidth = parseInt(req.query.bandwidth as string) || undefined;
+  const gridSize = parseInt(req.query.gridSize as string) || undefined;
+  let industry = req.query.industry as string || undefined;
+  // Auto-detect industry from most common category in project points
+  if (!industry) {
+    try {
+      const db = require("../db").default;
+      const row = await db.one(
+        "SELECT metadata->>'industry' AS ind, COUNT(*)::INTEGER AS cnt FROM spatial_points WHERE project_id = $1 AND metadata->>'industry' IS NOT NULL GROUP BY metadata->>'industry' ORDER BY cnt DESC LIMIT 1",
+        [req.params.id]
+      );
+      if (row?.ind) industry = row.ind;
+    } catch { /* fallback to default KDE params */ }
+  }
+  const points = await computeKDEHeatmap(req.params.id, bandwidth, gridSize, { industry });
   res.json({ points });
 });
 

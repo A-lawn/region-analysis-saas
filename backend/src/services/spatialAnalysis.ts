@@ -337,7 +337,7 @@ export async function computeCoverage(
       [projectId]
     );
     const pointCount = pointCountRow?.cnt || 0;
-    const advice = await generateAdvice({ pointCount, triangulation: triMetrics });
+    const advice = await generateAdvice({ pointCount, triangulation: triMetrics, industry });
 
 // ---- Overlap layers (exclusive/double/triple+) from triangulation ----
     let overlapLayers: OverlapLayers | undefined;
@@ -402,14 +402,37 @@ export async function computeCoverage(
 
 export async function computeKDEHeatmap(
   projectId: string,
-  bandwidthMeters: number = 1000,
-  gridSizeMeters: number = 500
+  bandwidthMeters?: number,
+  gridSizeMeters?: number,
+  opts?: { industry?: string }
 ): Promise<HeatmapPoint[]> {
-  const cacheKey = `analysis:${projectId}:heatmap:${bandwidthMeters}:${gridSizeMeters}`;
+  // Load industry-specific KDE parameters
+  let effectiveBandwidth = bandwidthMeters;
+  let effectiveGridSize = gridSizeMeters;
+  let maxGridCells = 80;
+  let cutoffFactor = 3.0;
+
+  if (opts?.industry) {
+    try {
+      const { loadIndustryConfig } = require("./analysis/industryLoader");
+      const industryCfg = await loadIndustryConfig(opts.industry);
+      if (industryCfg?.analysisParams?.kde) {
+        const k = industryCfg.analysisParams.kde;
+        if (effectiveBandwidth === undefined) effectiveBandwidth = k.bandwidthM;
+        if (effectiveGridSize === undefined) effectiveGridSize = k.gridSizeM;
+        maxGridCells = k.maxGridCells ?? maxGridCells;
+        cutoffFactor = k.cutoffFactor ?? cutoffFactor;
+      }
+    } catch (e: any) {
+      console.warn("[KDE] Failed to load industry config:", e.message);
+    }
+  }
+  effectiveBandwidth = effectiveBandwidth ?? config.analysis.kdeBandwidth;
+  effectiveGridSize = effectiveGridSize ?? config.analysis.kdeGridSize;
+
+  const cacheKey = `analysis:${projectId}:heatmap:v8:${effectiveBandwidth}:${effectiveGridSize}:${opts?.industry || "none"}`;
   return cached(cacheKey, config.cache.ttl, async () => {
-    const bandwidthDeg = bandwidthMeters / 111320.0;
-    const gridSizeDeg = gridSizeMeters / 111320.0;
-    const cutoffFactor = 3.0;
+    const METERS_PER_DEG_LAT = 111320.0;
 
     const bounds = await db.one(
       "SELECT ST_XMin(ST_Collect(geom)) AS min_x, ST_XMax(ST_Collect(geom)) AS max_x, ST_YMin(ST_Collect(geom)) AS min_y, ST_YMax(ST_Collect(geom)) AS max_y FROM spatial_points WHERE project_id = $1",
@@ -424,47 +447,67 @@ export async function computeKDEHeatmap(
     );
     if (!pts || pts.length === 0) return [];
 
+    // Compute latitude-corrected bandwidths (X=lng uses cos(lat) correction)
+    const avgLatRad = pts.reduce((s: number, p: any) => s + (p.y as number), 0) / pts.length * Math.PI / 180;
+    const cosLat = Math.max(0.01, Math.cos(avgLatRad));
+    const bandwidthXLng = effectiveBandwidth / (METERS_PER_DEG_LAT * cosLat);
+    const bandwidthYLat = effectiveBandwidth / METERS_PER_DEG_LAT;
+    const gridSizeXLng = effectiveGridSize / (METERS_PER_DEG_LAT * cosLat);
+    const gridSizeYLat = effectiveGridSize / METERS_PER_DEG_LAT;
+
     if (pts.length > 3000) {
+      // Deterministic spatial-stratified downsampling
+      // Hash each point's grid cell to produce a reproducible, spatially-balanced sample
       const sampleRate = 3000 / pts.length;
-      pts = pts.filter(() => Math.random() < sampleRate);
+      const cellSizeDeg = gridSizeXLng * 4; // group 4x4 grid cells for stratification
+      pts = pts.filter((p: any) => {
+        const cx = Math.floor((p.x - minX) / cellSizeDeg);
+        const cy = Math.floor((p.y - minY) / cellSizeDeg);
+        // Deterministic hash based on cell + point index gives stable sampling
+        const h = ((cx * 0x9e3779b9 + cy * 0x517cc1b7) >>> 0) / 0xffffffff;
+        return h < sampleRate;
+      });
+      // Re-sort deterministically after filtering
+      pts.sort((a: any, b: any) => a.x - b.x || a.y - b.y);
     }
 
     const extentX = maxX - minX;
     const extentY = maxY - minY;
-    const maxGridCells = 80;
-    const gridCols = Math.min(Math.ceil(extentX / gridSizeDeg), maxGridCells);
-    const gridRows = Math.min(Math.ceil(extentY / gridSizeDeg), maxGridCells);
+    const gridCols = Math.min(Math.ceil(extentX / gridSizeXLng), maxGridCells);
+    const gridRows = Math.min(Math.ceil(extentY / gridSizeYLat), maxGridCells);
 
-    const bucketSize = bandwidthDeg * cutoffFactor;
+    const bucketSizeXLng = bandwidthXLng * cutoffFactor;
+    const bucketSizeYLat = bandwidthYLat * cutoffFactor;
     const bucketMap = new Map<string, typeof pts>();
 
     for (const p of pts) {
-      const bx = Math.floor((p.x as number - minX) / bucketSize);
-      const by = Math.floor((p.y as number - minY) / bucketSize);
+      const bx = Math.floor((p.x as number - minX) / bucketSizeXLng);
+      const by = Math.floor((p.y as number - minY) / bucketSizeYLat);
       const key = `${bx},${by}`;
       if (!bucketMap.has(key)) bucketMap.set(key, []);
       bucketMap.get(key)!.push(p);
     }
 
     const grid: { lng: number; lat: number; weight: number }[] = [];
-    const normFactor = bandwidthDeg * Math.sqrt(2 * Math.PI);
+    // Correct 2D Gaussian KDE normalization: 1/(2*pi * bw_x * bw_y)
+    const normFactor = bandwidthXLng * bandwidthYLat * 2 * Math.PI;
 
     for (let row = 0; row <= gridRows; row++) {
       for (let col = 0; col <= gridCols; col++) {
-        const gx = minX + col * gridSizeDeg;
-        const gy = minY + row * gridSizeDeg;
+        const gx = minX + col * gridSizeXLng;
+        const gy = minY + row * gridSizeYLat;
         let w = 0;
 
-        const gbx = Math.floor((gx - minX) / bucketSize);
-        const gby = Math.floor((gy - minY) / bucketSize);
+        const gbx = Math.floor((gx - minX) / bucketSizeXLng);
+        const gby = Math.floor((gy - minY) / bucketSizeYLat);
 
         for (let dbx = -1; dbx <= 1; dbx++) {
           for (let dby = -1; dby <= 1; dby++) {
             const bucket = bucketMap.get(`${gbx + dbx},${gby + dby}`);
             if (!bucket) continue;
             for (const p of bucket) {
-              const dx = (gx - (p.x as number)) / bandwidthDeg;
-              const dy = (gy - (p.y as number)) / bandwidthDeg;
+              const dx = (gx - (p.x as number)) / bandwidthXLng;
+              const dy = (gy - (p.y as number)) / bandwidthYLat;
               const distSq = dx * dx + dy * dy;
               if (distSq > cutoffFactor * cutoffFactor) continue;
               w += Math.exp(-0.5 * distSq);
@@ -579,7 +622,7 @@ export async function computeSiteOptimization(
       // Competition: penalize if competitors within 500m; 0 competitors=100, 5+=0
       const comp_500m = comp.competitorCount500m || 0;
       const compScore = Math.max(0, 1 - comp_500m / 5);
-      const advice = await generateAdvice({});
+      const advice = await generateAdvice({ industry: options.industry });
       const dr = await db.one(
         "SELECT MIN(ST_Distance(ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, geom::geography)) AS min_dist, COUNT(*)::INTEGER AS point_count FROM spatial_points WHERE project_id = $3",
         [wgsLng, wgsLat, projectId]

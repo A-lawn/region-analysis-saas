@@ -113,12 +113,15 @@ export function useAmap() {
     })
   }
 
-  function addHeatmapLayer(points: { lng: number; lat: number; weight: number }[]) {
+  function addHeatmapLayer(points: { lng: number; lat: number; weight: number }[], opts?: { bandwidthM?: number }) {
     const map = amapInstance.value
     if (!map || !(window as any).AMap.HeatMap) return
     if (heatmapLayer.value) heatmapLayer.value.setMap(null)
+    // Link render radius to backend KDE bandwidth
+    const bw = opts?.bandwidthM || 1000
+    const renderRadius = Math.min(35, Math.max(5, Math.round(8 + (bw - 200) * 0.005)))
     heatmapLayer.value = new (window as any).AMap.HeatMap(map, {
-      radius: 25,
+      radius: renderRadius,
       opacity: [0, 0.8],
       gradient: { 0: 'rgba(102, 255, 0, 0)', 0.25: 'rgb(102,255,0)', 0.5: 'rgb(255,255,0)', 0.75: 'rgb(255,102,0)', 1: 'rgb(255,0,0)' },
     })

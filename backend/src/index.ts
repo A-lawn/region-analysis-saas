@@ -108,7 +108,7 @@ app.get("/api/web/projects/:id/export/report", authRequired, async (req, res) =>
     };
 
     try { report.coverage = await computeCoverage(projectId, 3000); } catch (e: any) { report.coverage = { error: e.message }; }
-    try { report.heatmap = await computeKDEHeatmap(projectId); } catch (e: any) { report.heatmap = { error: e.message }; }
+    try { report.heatmap = await computeKDEHeatmap(projectId, undefined, undefined, { industry: summary.industry }); } catch (e: any) { report.heatmap = { error: e.message }; }
     try { report.clusters = await computeClusters(projectId); } catch (e: any) { report.clusters = { error: e.message }; }
 
     res.json(report);

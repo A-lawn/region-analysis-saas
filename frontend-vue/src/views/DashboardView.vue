@@ -60,7 +60,7 @@
           <div class="panel-content">
             <Transition name="panel-fade" mode="out-in">
               <CoveragePanel v-if="activeTab === 'coverage'" :project-id="projectId" @result="handleCoverage" :key="'coverage'" />
-              <HeatmapPanel v-else-if="activeTab === 'heatmap'" :project-id="projectId" @result="handleHeatmap" :key="'heatmap'" />
+              <HeatmapPanel v-else-if="activeTab === 'heatmap'" :project-id="projectId" :industry="detectedIndustry" @result="handleHeatmap" :key="'heatmap'" />
               <ClusterPanel v-else-if="activeTab === 'cluster'" :project-id="projectId" @result="handleCluster" :key="'cluster'" />
               <SiteOptimizationPanel v-else-if="activeTab === 'site'" :project-id="projectId" :clicked-candidate="siteClickPoint" @result="handleSite" :key="'site'" />
               <H3HexagonPanel v-else-if="activeTab === 'h3'" :project-id="projectId" @result="handleH3" :key="'h3'" />
@@ -110,6 +110,21 @@ const mapInstance = ref<any>(null)
 const { clearOverlays, addGeoJSONPolygons, addHeatmapLayer, addCircles, addMarkers, addPolygons, getMap, fitBounds } = useAmap()
 const siteClickPoint = ref<{ lng: number; lat: number } | null>(null)
 const clickEnabled = computed(() => activeTab.value === 'site')
+const detectedIndustry = computed(() => {
+  const pts = projectStore.validPoints
+  if (!pts || pts.length === 0) return undefined
+  const counts: Record<string, number> = {}
+  for (const p of pts) {
+    const ind = p.metadata?.industry as string
+    if (ind) counts[ind] = (counts[ind] || 0) + 1
+  }
+  let best: string | undefined
+  let max = 0
+  for (const [k, v] of Object.entries(counts)) {
+    if (v > max) { max = v; best = k }
+  }
+  return best
+})
 
 const summary = computed(() => projectStore.currentSummary)
 const validPoints = computed(() => projectStore.validPoints)
@@ -250,9 +265,9 @@ function voronoiPalette(): string[][] {
     ['rgba(52,120,246,0.18)', '#3478F6'], ['rgba(48,219,176,0.18)', '#30DBB0'],
   ]
 }
-function handleHeatmap(data: { points: HeatmapPoint[] }) {
+function handleHeatmap(data: { points: HeatmapPoint[] }, bandwidthM = 1000) {
   clearOverlays()
-  if (data.points?.length) addHeatmapLayer(data.points)
+  if (data.points?.length) addHeatmapLayer(data.points, { bandwidthM })
   else show('热力图数据为空', 'info')
 }
 

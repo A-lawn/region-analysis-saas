@@ -48,10 +48,10 @@ function onUpdate(v: Record<string, number>) {
 async function runAnalysis() {
   task.value = { taskId: '', status: 'running' }
   try {
-    const data = await getHeatmap(props.projectId, values.value.bandwidth, values.value.gridSize)
+    const data = await getHeatmap(props.projectId, values.value.bandwidth, values.value.gridSize, props.industry)
     result.value = data
     task.value = { taskId: '', status: 'completed', result: data }
-    emit('result', data)
+    emit('result', data, values.value.bandwidth)
   } catch (e: any) {
     task.value = { taskId: '', status: 'failed', error: e.message }
   }
