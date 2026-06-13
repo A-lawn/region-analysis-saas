@@ -44,22 +44,18 @@ function getTenantId(req: Request): string {
 // ---- Safe filename decode: handle Latin-1 → UTF-8 encoding issues on Windows ----
 function safeFileName(originalname: string): string {
   try {
-    // Detect if the string looks like it was Latin-1 encoded UTF-8
-    // Latin-1 encoded Chinese chars appear as Ã¥Â¤Â§ etc.
-    if (/[ÃÂÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß]/.test(originalname)) {
-      // Try to decode from Latin-1 bytes back to UTF-8
-      const latin1Bytes = Buffer.from(originalname, "latin1");
-      const utf8Decoded = latin1Bytes.toString("utf-8");
-      // Only use if it decodes to valid Chinese/Multibyte
-      if (/[一-鿿]/.test(utf8Decoded)) {
-        return utf8Decoded;
-      }
+    // Check if original has actual Chinese characters (already correct)
+    if (/[一-鿿]/.test(originalname)) return originalname;
+    
+    // Detect double-encoded UTF-8: treat string as Latin-1 bytes, decode as UTF-8
+    // If result contains Chinese but original doesn't, we have a garbled name
+    const latin1Bytes = Buffer.from(originalname, "latin1");
+    const utf8Decoded = latin1Bytes.toString("utf-8");
+    if (/[一-鿿]/.test(utf8Decoded)) {
+      return utf8Decoded;
     }
-    // Already UTF-8 or ASCII
-    return originalname;
-  } catch {
-    return originalname;
-  }
+  } catch {}
+  return originalname;
 }
 
 // ---- Multer for file uploads ----
