@@ -81,7 +81,7 @@ function paramsHash(params: Record<string, any>): string {
 }
 
 async function computeConcaveHull(projectId: string, industry?: string): Promise<{ geojson: any; hullType: string; areaSqm: number }> {
-  const indWhere = industry ? ` AND metadata->>'industry' = $[industry]` : "";
+  const indWhere = industry ? " AND metadata->>'industry' = '" + industry + "'" : "";
   const ch = await db.one(`
     SELECT
       ST_AsGeoJSON(ST_ConvexHull(ST_Collect(geom))) AS geojson,
@@ -99,7 +99,7 @@ async function computeConcaveHull(projectId: string, industry?: string): Promise
 }
 
 async function computeTriangulationMetrics(projectId: string, radiusMeters: number, industry?: string): Promise<TriangulationMetrics> {
-  const indWhere = industry ? ` AND metadata->>'industry' = $[industry]` : "";
+  const indWhere = industry ? " AND metadata->>'industry' = '" + industry + "'" : "";
   const cacheKey = "analysis:" + projectId + ":triang:v7:" + radiusMeters + (industry ? ":ind_" + industry : "");
   return cached(cacheKey, config.cache.ttl, async () => {
     try {
@@ -180,7 +180,7 @@ export async function computeCoverage(
 
   const cacheKey = "analysis:" + projectId + ":coverage:v7:" + radiusMeters + decaySuffix + wsSuffix + clipSuffix + networkSuffix + industrySuffix;
   return cached(cacheKey, config.cache.ttl, async () => {
-    const hullResult = await computeConcaveHull(projectId, opts?.industry);
+    const hullResult = await computeConcaveHull(projectId, industry);
 
     // Early exit if hull has no geometry (e.g., no points match industry filter)
     if (!hullResult.geojson) {
