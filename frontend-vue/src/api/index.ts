@@ -145,6 +145,7 @@ export async function solveGame(
   followerQ: number,
   industry?: string,
   iterations?: number,
+  huffParamsOverride?: { lambda: number; alpha_area: number; alpha_brand: number },
 ): Promise<GameSolveResponse> {
   const { data } = await apiClient.post(`/projects/${projectId}/game/solve`, {
     leader_candidates: leaderCandidates,
@@ -153,6 +154,7 @@ export async function solveGame(
     follower_q: followerQ,
     industry,
     iterations,
+    huff_params: huffParamsOverride,
   })
   return data
 }
@@ -187,6 +189,7 @@ export async function compareGamePlans(
   planBSites: string[],
   followerQ: number,
   industry?: string,
+  huffParamsOverride?: { lambda: number; alpha_area: number; alpha_brand: number },
 ): Promise<GameCompareResponse> {
   const { data } = await apiClient.post(`/projects/${projectId}/game/compare`, {
     leader_candidates: leaderCandidates,
@@ -195,6 +198,7 @@ export async function compareGamePlans(
     plan_b_sites: planBSites,
     follower_q: followerQ,
     industry,
+    huff_params: huffParamsOverride,
   })
   return data
 }

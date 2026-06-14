@@ -647,8 +647,15 @@ router.post("/projects/:id/game/solve", authRequired, analysisLimiter, async (re
     // 1. 从Python引擎获取项目数据
     const dataRes = await prepareGameData(projectId, industry);
 
-    // 2. 获取Huff参数
-    const huffParams = await getHuffParams(projectId, industry);
+    // 2. 获取Huff参数 — 前端可手动覆盖
+    const { huff_params: huffOverride } = req.body;
+    let huffParams;
+    if (huffOverride && typeof huffOverride.lambda === 'number') {
+      huffParams = { ...huffOverride, source: "manual" as const };
+      logger.info({ projectId, lambda: huffOverride.lambda }, "[Game] 使用前端手动Huff参数");
+    } else {
+      huffParams = await getHuffParams(projectId, industry);
+    }
 
     // 3. 构建请求
     const gameReq: any = {

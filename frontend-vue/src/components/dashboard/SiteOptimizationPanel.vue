@@ -163,16 +163,26 @@ B,116.420000,39.915000"></textarea>
       <div class="huff-card" v-if="huffParams">
         <div class="huff-head">
           <span class="huff-label">Huff 模型参数</span>
-          <span class="huff-badge" :class="huffParams.source">{{ huffSourceLabel }}</span>
+          <span class="huff-badge" :class="huffOverride ? 'manual' : huffParams.source">{{ huffOverride ? '手动' : huffSourceLabel }}</span>
         </div>
         <div class="huff-grid">
-          <div class="huff-item"><span class="huff-key">λ</span><span class="huff-val">{{ huffParams.lambda.toFixed(2) }}</span></div>
-          <div class="huff-item"><span class="huff-key">α_area</span><span class="huff-val">{{ huffParams.alpha_area.toFixed(2) }}</span></div>
-          <div class="huff-item"><span class="huff-key">α_brand</span><span class="huff-val">{{ huffParams.alpha_brand.toFixed(2) }}</span></div>
-          <div class="huff-item" v-if="huffParams.r_squared != null"><span class="huff-key">R²</span><span class="huff-val">{{ huffParams.r_squared.toFixed(2) }}</span></div>
+          <label class="huff-item">
+            <span class="huff-key">λ</span>
+            <input type="number" v-model.number="huffOverrideValues.lambda" step="0.1" min="0.1" max="20" class="huff-input" />
+          </label>
+          <label class="huff-item">
+            <span class="huff-key">α_area</span>
+            <input type="number" v-model.number="huffOverrideValues.alpha_area" step="0.05" min="0" max="5" class="huff-input" />
+          </label>
+          <label class="huff-item">
+            <span class="huff-key">α_brand</span>
+            <input type="number" v-model.number="huffOverrideValues.alpha_brand" step="0.05" min="0" max="5" class="huff-input" />
+          </label>
         </div>
+        <p class="huff-hint" v-if="huffOverride">已手动修改参数，重新推演时将使用当前值</p>
         <div class="huff-footer">
-          <button class="btn-text" @click="loadHuffParams" :disabled="huffLoading">刷新参数</button>
+          <button class="btn-text" @click="resetHuffParams" :disabled="!huffOverride">重置</button>
+          <button class="btn-text" @click="loadHuffParams" :disabled="huffLoading">刷新</button>
         </div>
       </div>
 
@@ -396,6 +406,8 @@ const gameResult = ref<GameSolveResponse | null>(null)
 const gameLoading = ref(false)
 const huffParams = ref<HuffParams | null>(null)
 const huffLoading = ref(false)
+const huffOverride = ref(false)
+const huffOverrideValues = reactive({ lambda: 2.0, alpha_area: 0.5, alpha_brand: 0.8 })
 
 // ── Compare ──
 const compareEdit = ref<'A' | 'B'>('A')
@@ -549,11 +561,40 @@ const huffSourceLabel = computed(() => {
   const s = huffParams.value?.source; if (s==='mle') return 'MLE拟合'; if (s==='cached_mle') return '拟合(缓存)'; if (s==='benchmark') return '行业基准'; return '默认'
 })
 
-async function loadHuffParams() { huffLoading.value = true; try { huffParams.value = await getHuffParams(props.projectId, industry.value||undefined) } catch {} finally { huffLoading.value = false } }
+async function loadHuffParams() {
+  huffLoading.value = true
+  try {
+    huffParams.value = await getHuffParams(props.projectId, industry.value||undefined)
+    if (huffParams.value) {
+      huffOverrideValues.lambda = huffParams.value.lambda
+      huffOverrideValues.alpha_area = huffParams.value.alpha_area
+      huffOverrideValues.alpha_brand = huffParams.value.alpha_brand
+      huffOverride.value = false
+    }
+  } catch {} finally { huffLoading.value = false }
+}
+function resetHuffParams() {
+  if (!huffParams.value) return
+  huffOverrideValues.lambda = huffParams.value.lambda
+  huffOverrideValues.alpha_area = huffParams.value.alpha_area
+  huffOverrideValues.alpha_brand = huffParams.value.alpha_brand
+  huffOverride.value = false
+}
 onMounted(() => {
   loadHuffParams()
   // Emit pool markers on tab activation
   nextTick(() => emitMarkers())
+})
+
+// Track manual Huff param changes
+watch([() => huffOverrideValues.lambda, () => huffOverrideValues.alpha_area, () => huffOverrideValues.alpha_brand], () => {
+  if (huffParams.value && (
+    huffOverrideValues.lambda !== huffParams.value.lambda ||
+    huffOverrideValues.alpha_area !== huffParams.value.alpha_area ||
+    huffOverrideValues.alpha_brand !== huffParams.value.alpha_brand
+  )) {
+    huffOverride.value = true
+  }
 })
 
 function onIndustryChange() {
@@ -576,7 +617,8 @@ async function runGameSolve() {
     const data = await solveGame(props.projectId,
       gameLeaderCandidates.value.map(c=>({id:c.id,lng:c.lng,lat:c.lat,area:c.area,brand:c.brand})),
       gameFollowerCandidates.value.map(c=>({id:c.id,lng:c.lng,lat:c.lat,area:c.area,brand:c.brand})),
-      gameLeaderP.value, gameFollowerQ.value, industry.value||undefined, 200)
+      gameLeaderP.value, gameFollowerQ.value, industry.value||undefined, 200,
+      { lambda: huffOverrideValues.lambda, alpha_area: huffOverrideValues.alpha_area, alpha_brand: huffOverrideValues.alpha_brand })
     gameResult.value = data; emit('result', data)
     const rg: { groupId: string; points: { lng: number; lat: number; name?: string; label?: string; color?: string }[] }[] = []
     if (data.leader_sites) { const pts = gameLeaderCandidates.value.filter(c=>data.leader_sites.includes(c.id)); if (pts.length) rg.push({groupId:'result-leader',points:pts.map((c,i)=>({lng:c.lng,lat:c.lat,name:c.id,label:'SOL_'+c.id,color:'#34C759'}))}) }
@@ -598,7 +640,8 @@ async function runCompare() {
     const data = await compareGamePlans(props.projectId,
       all.map(c=>({id:c.id,lng:c.lng,lat:c.lat,area:c.area,brand:c.brand})),
       gameFollowerCandidates.value.map(c=>({id:c.id,lng:c.lng,lat:c.lat,area:c.area,brand:c.brand})),
-      aIds, bIds, gameFollowerQ.value, industry.value||undefined)
+      aIds, bIds, gameFollowerQ.value, industry.value||undefined,
+      { lambda: huffOverrideValues.lambda, alpha_area: huffOverrideValues.alpha_area, alpha_brand: huffOverrideValues.alpha_brand })
     compareResult.value = data; emit('result', data)
     const w = data.recommendation?.winner
     emit('markersUpdate', [
@@ -923,6 +966,21 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
   font-style: italic;
   letter-spacing: 0.02em;
 }
+.huff-input {
+  width: 56px;
+  padding: 2px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px; font-weight: 500;
+  text-align: right;
+  color: var(--color-text-primary);
+  background: var(--color-bg-input);
+}
+.huff-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px rgba(0,122,255,0.12); }
+.huff-badge.manual { background: var(--color-accent); color: #fff; }
+.huff-hint { font-size: 10px; color: var(--color-accent); padding: 2px 0; margin: 0; }
+
 .huff-val {
   font-size: 12px;
   font-weight: 500;
