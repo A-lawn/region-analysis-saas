@@ -307,11 +307,142 @@ class HuffRevenueMLE:
         return mse + reg
 
     def fit(self, initial=None):
+        # ── Phase 1: 营收比值法 ──
+        # 用门店营收比值作为观测信号，不需要虚构消费力
+        revenue_ratio_results = self._fit_revenue_ratios(initial)
+
+        # ── Phase 2: 消费力分配法 (作为补充，仅在比值法信号不足时) ──
+        if revenue_ratio_results["n_pairs"] >= 10:
+            # 比值法信号充足，优先使用
+            return revenue_ratio_results
+        else:
+            # 比值对不足时降级到消费力分配
+            logger.info("HuffRevenueMLE: 营收比值对不足(%d), 降级到消费力分配法",
+                         revenue_ratio_results["n_pairs"])
+            return self._fit_consumption_allocation(initial)
+
+    def _fit_revenue_ratios(self, initial=None):
+        """核心方法：门店营收比值 → Huff吸引力比值 → 拟合参数"""
+        if initial is None:
+            params = np.array([2.0, 0.5, 0.5])
+        else:
+            params = np.array([max(float(initial[0]), 0.1),
+                               max(float(initial[1]), 0.01),
+                               max(float(initial[2]), 0.01)])
+
+        n_stores = len(self.stores)
+        max_dist = max(self.radius_m * 2, 2000)  # 2倍半径 or 2km
+
+        # 构建营收比值观测对
+        pairs = []
+        for i in range(n_stores):
+            for j in range(i + 1, n_stores):
+                si, sj = self.stores[i], self.stores[j]
+                ri, rj = si.get("daily_revenue", 0), sj.get("daily_revenue", 0)
+                if ri <= 0 or rj <= 0:
+                    continue
+                dist = self._haversine(si["lat"], si["lng"], sj["lat"], sj["lng"])
+                if dist > max_dist:
+                    continue
+                if dist < 5:  # 同位置忽略
+                    continue
+                # 营收比值 > 1表示i店更强
+                ratio = max(ri / rj, rj / ri)
+                if ratio > 20:  # 极端比值跳过
+                    continue
+                pairs.append((i, j, ri, rj, dist))
+
+        if len(pairs) < 5:
+            return RevenueFitResult(
+                fitted_params={"lambda": 2.0, "alpha_area": 0.5, "alpha_brand": 0.5},
+                r_squared=0, aic=0, convergence=False,
+                predicted_revenues={}, actual_revenues={},
+                n_grid_cells=0, n_stores=n_stores,
+            )
+
+        # 损失函数：对所有店对的营收比 vs Huff吸引力比
+        def ratio_loss(x):
+            lmd = abs(x[0])
+            aa = abs(x[1])
+            ab = abs(x[2])
+            total = 0.0
+            for i, j, ri, rj, dist in pairs:
+                # Huff吸引力: A = area^aa * brand^ab * e^(-lambda * dist)
+                ai = self.areas[i]
+                bi = self.brands[i]
+                aj = self.areas[j]
+                bj = self.brands[j]
+                # 从i到j的中间点评估(简化：取中点距离=0)
+                # 实际使用：吸引力比 = (ai^aa * bi^ab) / (aj^aa * bj^ab) * e^(-lambda * dist)
+                attr_i = (ai ** aa) * (bi ** ab)
+                attr_j = (aj ** aa) * (bj ** ab)
+                # 距离衰减：假设消费者在i和j之间选择，i距消费者~dist
+                huff_ratio = (attr_i / max(attr_j, 1e-10)) * np.exp(-lmd * dist / 1000.0)
+                observed_ratio = ri / rj
+                # 对数误差
+                err = np.log(max(huff_ratio, 1e-10)) - np.log(observed_ratio)
+                total += err ** 2
+            reg = 0.001 * (lmd**2 + aa**2 + ab**2)
+            return total / len(pairs) + reg
+
+        bounds = [(0.01, 20.0), (0.01, 5.0), (0.01, 5.0)]
+
+        result = minimize(
+            ratio_loss, params, method="L-BFGS-B",
+            bounds=bounds, options={"maxiter": 500, "ftol": 1e-8}
+        )
+
+        params_opt = result.x
+        lmd = abs(params_opt[0])
+        aa = abs(params_opt[1])
+        ab = abs(params_opt[2])
+
+        # R² 近似：比较预测吸引力比 vs 实际营收比
+        pred_ratios, actual_ratios = [], []
+        for i, j, ri, rj, dist in pairs:
+            attr_i = (self.areas[i] ** aa) * (self.brands[i] ** ab)
+            attr_j = (self.areas[j] ** aa) * (self.brands[j] ** ab)
+            pred = (attr_i / max(attr_j, 1e-10)) * np.exp(-lmd * dist / 1000.0)
+            pred_ratios.append(np.log(max(pred, 1e-10)))
+            actual_ratios.append(np.log(ri / rj))
+
+        if len(pred_ratios) >= 3:
+            pred_arr = np.array(pred_ratios)
+            act_arr = np.array(actual_ratios)
+            ss_res = np.sum((pred_arr - act_arr) ** 2)
+            ss_tot = np.sum((act_arr - np.mean(act_arr)) ** 2)
+            r2 = max(0.0, min(1.0, 1 - ss_res / max(ss_tot, 1e-10)))
+        else:
+            r2 = 0.0
+
+        n = len(pairs)
+        ll = -0.5 * n * np.log(max(ss_res / n, 1e-10)) if n > 0 and ss_res > 0 else 0
+        aic = 2 * 3 - 2 * ll
+
+        converged = bool(result.success)
+
+        logger.info("HuffRevenueMLE(ratio): pairs=%d R²=%.3f λ=%.3f αa=%.3f αb=%.3f",
+                     n, r2, lmd, aa, ab)
+
+        return RevenueFitResult(
+            fitted_params={
+                "lambda": round(float(lmd), 4),
+                "alpha_area": round(float(aa), 4),
+                "alpha_brand": round(float(ab), 4),
+            },
+            r_squared=round(float(r2), 4),
+            aic=round(float(aic), 2),
+            convergence=converged,
+            predicted_revenues={},
+            actual_revenues={s["id"]: float(s.get("daily_revenue", 0)) for s in self.stores},
+            n_grid_cells=0,
+            n_stores=len(self.stores),
+        )
+
+    def _fit_consumption_allocation(self, initial=None):
+        """降级方法：消费力分配法 (仅在比值对太少时使用)"""
         if initial is None:
             initial = [2.0, 0.5, 0.5]
-        else:
-            # Ensure positivity
-            initial = [max(float(initial[0]), 0.1), max(float(initial[1]), 0.01), max(float(initial[2]), 0.01)]
 
         bounds = [(0.01, 20.0), (0.0, 5.0), (0.0, 5.0)]
 
