@@ -175,11 +175,23 @@ B,116.420000,39.915000"></textarea>
             <div class="result-split">
               <div class="result-side">
                 <span class="result-tag" style="background:var(--color-accent)">我方选址</span>
-                <span class="result-sites">{{ (gameResult.leader_sites || []).join(', ') || '—' }}</span>
+                <div class="result-site-list">
+                  <div v-for="s in resolvedLeaderSites" :key="s.id" class="result-site-item">
+                    <span class="site-name-tag">{{ s.name }}</span>
+                    <span class="site-coord-tag">{{ s.lng.toFixed(4) }}, {{ s.lat.toFixed(4) }}</span>
+                  </div>
+                  <span v-if="!resolvedLeaderSites.length" class="result-sites">—</span>
+                </div>
               </div>
               <div class="result-side">
                 <span class="result-tag" style="background:var(--color-error)">竞品攻击</span>
-                <span class="result-sites">{{ (gameResult.follower_sites || []).join(', ') || '—' }}</span>
+                <div class="result-site-list">
+                  <div v-for="s in resolvedFollowerSites" :key="s.id" class="result-site-item">
+                    <span class="site-name-tag follower-name">{{ s.name }}</span>
+                    <span class="site-coord-tag">{{ s.lng.toFixed(4) }}, {{ s.lat.toFixed(4) }}</span>
+                  </div>
+                  <span v-if="!resolvedFollowerSites.length" class="result-sites">—</span>
+                </div>
               </div>
             </div>
             <div class="result-metrics">
@@ -471,6 +483,20 @@ function parseCandidatesText(): { name: string; lng: number; lat: number }[] {
     return { name: p[0]||('P'+(i+1)), lng: parseFloat(p[1]), lat: parseFloat(p[2]) }
   }).filter(c => !isNaN(c.lng) && !isNaN(c.lat))
 }
+
+const resolvedLeaderSites = computed(() => {
+  return (gameResult.value?.leader_sites || []).map(id => {
+    const found = gameLeaderCandidates.value.find(c => c.id === id)
+    return found || { id, lng: 0, lat: 0, name: id }
+  }).filter(s => s.lng !== 0 || s.name !== s.id)
+})
+
+const resolvedFollowerSites = computed(() => {
+  return (gameResult.value?.follower_sites || []).map(id => {
+    const found = gameFollowerCandidates.value.find(c => c.id === id)
+    return found || { id, lng: 0, lat: 0, name: id }
+  })
+})
 
 function scoreTagClass(s: number) { if (s >= 3) return 'tag-high'; if (s >= 2) return 'tag-mid'; return 'tag-low' }
 
@@ -901,6 +927,18 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
   padding: 2px 8px; border-radius: 4px; white-space: nowrap;
 }
 .result-sites { font-size: 12px; color: var(--color-text-primary); font-weight: 500; }
+.result-site-list { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.result-site-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.site-name-tag {
+  font-weight: 600; color: var(--color-accent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;
+}
+.site-name-tag.follower-name { color: var(--color-error); }
+.site-coord-tag {
+  font-size: 10px; color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  flex-shrink: 0;
+}
 .result-metrics { display: flex; gap: 16px; }
 .metric { display: flex; flex-direction: column; align-items: center; }
 .metric-val { font-size: 16px; font-weight: 700; color: var(--color-text-primary); }
