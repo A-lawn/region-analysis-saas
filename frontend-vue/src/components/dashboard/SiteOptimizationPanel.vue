@@ -97,7 +97,7 @@ B,116.420000,39.915000"></textarea>
         <p class="field-caption">点击地图灰色点切换选中/取消竞品候选</p>
         <select v-model="competitorFilter" class="select">
           <option value="">全部行业 ({{ importedPoints.length }})</option>
-          <option v-for="ind in uniqueIndustries" :key="ind" :value="ind">{{ ind }} ({{ industryCount(ind) }})</option>
+          <option v-for="ind in uniqueIndustries" :key="ind" :value="ind">{{ industryLabel(ind) }} ({{ industryCount(ind) }})</option>
         </select>
       </div>
 
@@ -159,7 +159,9 @@ B,116.420000,39.915000"></textarea>
           <div class="huff-item"><span class="huff-key">α_brand</span><span class="huff-val">{{ huffParams.alpha_brand.toFixed(2) }}</span></div>
           <div class="huff-item" v-if="huffParams.r_squared != null"><span class="huff-key">R²</span><span class="huff-val">{{ huffParams.r_squared.toFixed(2) }}</span></div>
         </div>
-        <button class="btn-text" @click="loadHuffParams" :disabled="huffLoading">刷新参数</button>
+        <div class="huff-footer">
+          <button class="btn-text" @click="loadHuffParams" :disabled="huffLoading">刷新参数</button>
+        </div>
       </div>
 
       <button class="btn-primary" @click="runGameSolve" :disabled="gameLoading || !gameLeaderCandidates.length">
@@ -364,6 +366,10 @@ const uniqueIndustries = computed(() => {
   return Array.from(s).sort()
 })
 function industryCount(ind: string): number { return importedPoints.value.filter(p => p.metadata?.industry === ind).length }
+function industryLabel(industryCode: string): string {
+  const cfg = industryStore.getIndustry(industryCode)
+  return cfg?.displayName || industryCode
+}
 
 const filteredPoolPoints = computed(() => {
   const fIds = new Set(gameFollowerCandidates.value.map(c => c.id))
@@ -600,7 +606,7 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 
 /* ── Field ── */
 .field { display: flex; flex-direction: column; gap: 4px; }
-.field-row { display: flex; gap: var(--space-2); align-items: center; }
+.field-row { display: flex; gap: var(--space-2); align-items: flex-start; }
 .field-half { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .field-label {
   font-size: 12px;
@@ -764,19 +770,20 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
   border-radius: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .huff-head { display: flex; justify-content: space-between; align-items: center; }
-.huff-label { font-size: 11px; font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.huff-label { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); }
 .huff-badge {
   font-size: 10px; padding: 2px 8px; border-radius: 10px;
   background: var(--color-accent-subtle); color: var(--color-accent);
 }
 .huff-badge.mle, .huff-badge.cached_mle { background: var(--color-success-bg); color: var(--color-success); }
-.huff-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.huff-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .huff-item { display: flex; gap: 4px; align-items: baseline; }
 .huff-key { font-size: 11px; color: var(--color-text-tertiary); font-family: monospace; }
-.huff-val { font-size: 13px; font-weight: 600; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.huff-val { font-size: 11px; font-weight: 600; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.huff-footer { display: flex; justify-content: flex-end; margin-top: 2px; }
 
 /* ── Card list (results) ── */
 .card-list { display: flex; flex-direction: column; gap: 8px; }
