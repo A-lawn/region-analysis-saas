@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="map-wrapper">
     <div v-if="error" class="map-error">
       <AppIcon name="alert" :size="28" color="var(--color-error)" />
@@ -20,6 +20,7 @@ import AppIcon from '@/components/shared/AppIcon.vue'
 
 const props = defineProps<{
   points: { lng: number; lat: number; name?: string }[]
+  markerGroups?: { groupId: string; points: { lng: number; lat: number; name?: string; label?: string; color?: string }[] }[]
   center?: [number, number]
   zoom?: number
   clickEnabled?: boolean
@@ -31,7 +32,7 @@ const emit = defineEmits<{
 }>()
 
 const mapId = 'map-' + Math.random().toString(36).substring(2, 8)
-const { initMap, getMap, fitBounds, clearOverlays, addClusterLayer, addMarkers } = useAmap()
+const { initMap, getMap, fitBounds, clearOverlays, addClusterLayer, addMarkers, addMarkersByGroup } = useAmap()
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -60,6 +61,12 @@ function toggleMapClick(map: any, enabled: boolean) {
       emit('mapClick', { lng: e.lnglat.getLng(), lat: e.lnglat.getLat() })
     }
     map.on('click', clickHandler)
+  }
+}
+
+function renderMarkerGroups() {
+  if (props.markerGroups && props.markerGroups.length) {
+    addMarkersByGroup(props.markerGroups)
   }
 }
 
