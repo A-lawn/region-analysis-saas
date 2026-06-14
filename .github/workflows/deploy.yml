@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/v3.0-hybrid-compute-engine']
   workflow_dispatch:
 
 jobs:
