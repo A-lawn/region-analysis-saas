@@ -10,9 +10,15 @@ services:
     ports:
       - "5432:5432"
     volumes:
-  compute-logs:
       - pgdata:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./database/init_v2.sql:/docker-entrypoint-initdb.d/02_init_v2.sql
+      - ./database/migrations/009_poi_cities.sql:/docker-entrypoint-initdb.d/03_poi_cities.sql
+      - ./database/migrations/010_unify_kpi_weights.sql:/docker-entrypoint-initdb.d/04_kpi_weights.sql
+      - ./database/migrations/011_backfill_decision_thresholds.sql:/docker-entrypoint-initdb.d/05_decision_thresholds.sql
+      - ./database/migrations/012_huff_params_cache.sql:/docker-entrypoint-initdb.d/06_huff_params.sql
+      - ./database/migrations/013_seed_huff_benchmarks.sql:/docker-entrypoint-initdb.d/07_huff_benchmarks.sql
+      - ./database/migrations/014_jwt_signing_keys.sql:/docker-entrypoint-initdb.d/08_jwt_keys.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d region_analysis"]
       interval: 5s
@@ -27,7 +33,6 @@ services:
     ports:
       - "6379:6379"
     volumes:
-  compute-logs:
       - redisdata:/data
     restart: unless-stopped
     healthcheck:
@@ -50,13 +55,15 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      JWT_SECRET: "${JWT_SECRET:-}"
+      ENC_KEY: "${ENC_KEY:-}"
       BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-180}"
       AMAP_WEB_KEY: "${AMAP_WEB_KEY:-}"
       AMAP_SERVER_KEY: "${AMAP_SERVER_KEY:-}"
+      PYTHON_COMPUTE_URL: "http://python-compute:8000"
     ports:
       - "3000:3000"
     volumes:
-  compute-logs:
       - ./backups:/app/backups
     depends_on:
       postgis:
@@ -65,14 +72,36 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  python-compute:
+    build:
+      context: ./compute-engine
+      dockerfile: Dockerfile
+    container_name: region-analysis-compute
+    environment:
+      DB_HOST: postgis
+      DB_PORT: "5432"
+      DB_NAME: region_analysis
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      JWT_SECRET: "${JWT_SECRET:-}"
+      ENC_KEY: "${ENC_KEY:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      LOG_DIR: /app/logs
+      LOG_TO_DB: "true"
+      LOG_TO_FILE: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - compute-logs:/app/logs
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # OSRM 路网路由引擎 — 等时圈 + 路网距离矩阵
-  # 数据准备（首次运行前执行一次）：
-  #   1. 下载中国路网: wget https://download.geofabrik.de/asia/china-latest.osm.pbf -P ./osrm-data/
-  #   2. 预处理: docker run --rm -v ./osrm-data:/data ghcr.io/project-osrm/osrm-backend osrm-extract -p /opt/car.lua /data/china-latest.osm.pbf
-  #              docker run --rm -v ./osrm-data:/data ghcr.io/project-osrm/osrm-backend osrm-partition /data/china-latest.osrm
-  #              docker run --rm -v ./osrm-data:/data ghcr.io/project-osrm/osrm-backend osrm-customize /data/china-latest.osrm
-  #   3. 启动: docker compose up -d osrm
   osrm:
     image: ghcr.io/project-osrm/osrm-backend
     container_name: region-analysis-osrm
@@ -80,7 +109,6 @@ services:
     ports:
       - "5000:5000"
     volumes:
-  compute-logs:
       - ./osrm-data:/data
     restart: unless-stopped
     healthcheck:
@@ -90,13 +118,13 @@ services:
       retries: 3
     profiles:
       - with-osrm
+
   frontend:
     image: nginx:alpine
     container_name: region-analysis-web
     ports:
       - "8080:80"
     volumes:
-  compute-logs:
       - ./public:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -104,8 +132,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  compute-logs:
   pgdata:
   redisdata:
-
-
+  compute-logs:
