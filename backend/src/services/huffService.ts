@@ -88,7 +88,8 @@ export async function getHuffParams(
       { projectId }
     );
 
-    if (hasRevenue?.cnt >= 5) {
+    // MLE disabled by default — enable with ENABLE_HUFF_MLE=true
+    if (process.env.ENABLE_HUFF_MLE === 'true' && hasRevenue?.cnt >= 5) {
       // 构建观测数据
       const points = await db.manyOrNone(
         `SELECT id, ST_X(geom)::numeric AS lng, ST_Y(geom)::numeric AS lat,
