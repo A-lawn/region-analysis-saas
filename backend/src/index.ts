@@ -38,6 +38,7 @@ import { ensureBackupDir, cleanExpiredBackups } from "./services/backupService";
 import { globalLimiter } from "./middleware/rateLimit";
 
 const app = express();
+app.set('trust proxy', 1);
 
 const allowedOrigin = process.env.APP_URL || "http://localhost:8080";
 app.use(cors({ origin: allowedOrigin, credentials: true }));
