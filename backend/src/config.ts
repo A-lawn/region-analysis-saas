@@ -1,7 +1,9 @@
-﻿// Configuration loaded from environment variables
+// Configuration loaded from environment variables
 import { resolve } from "path";
 
 export const config = {
+  // Python计算引擎地址
+  pythonComputeUrl: process.env.PYTHON_COMPUTE_URL || "http://localhost:8000",
   port: parseInt(process.env.PORT || "3000", 10),
   nodeEnv: process.env.NODE_ENV || "development",
   jwtSecret: process.env.JWT_SECRET || "",
@@ -65,3 +67,4 @@ export const config = {
     retentionDays: parseInt(process.env.BACKUP_RETENTION_DAYS || "180", 10),
   },
 };
+

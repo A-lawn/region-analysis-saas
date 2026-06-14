@@ -615,4 +615,140 @@ router.get("/transit/quota", authRequired, async (_req: Request, res: Response) 
   }
 });
 
+
+// ================================================================
+// v3.0 博弈选址路由 — Python计算引擎
+// ================================================================
+
+import { getHuffParams } from "../services/huffService";
+import {
+  solveGame, runScenarios, comparePlans, prepareGameData, checkEngineHealth,
+} from "../services/computeClient";
+
+// ---- GET /api/web/compute/health (auth required) ----
+router.get("/compute/health", authRequired, async (_req: Request, res: Response) => {
+  const healthy = await checkEngineHealth();
+  res.json({ engine: healthy ? "available" : "unavailable" });
+});
+
+// ---- POST /api/web/projects/:id/game/solve (auth required) ----
+router.post("/projects/:id/game/solve", authRequired, analysisLimiter, async (req: Request, res: Response) => {
+  const projectId = req.params.id;
+  const {
+    leader_candidates, follower_candidates, leader_p, follower_q,
+    industry, scenarios, iterations,
+  } = req.body;
+
+  if (!leader_candidates || !Array.isArray(leader_candidates) || leader_candidates.length === 0) {
+    return res.status(400).json({ error: "请提供Leader候选点" });
+  }
+
+  try {
+    // 1. 从Python引擎获取项目数据
+    const dataRes = await prepareGameData(projectId, industry);
+
+    // 2. 获取Huff参数
+    const huffParams = await getHuffParams(projectId, industry);
+
+    // 3. 构建请求
+    const gameReq: any = {
+      project_id: projectId,
+      industry,
+      leader_candidates: leader_candidates.map((c: any) => ({
+        id: c.id || c.name, lng: c.lng, lat: c.lat,
+        area: c.area || 100, brand: c.brand || 0.5,
+      })),
+      follower_candidates: (follower_candidates || []).map((c: any) => ({
+        id: c.id || c.name, lng: c.lng, lat: c.lat,
+        area: c.area || 100, brand: c.brand || 0.5,
+      })),
+      leader_p: leader_p || 3,
+      follower_q: follower_q ?? 2,
+      h3_demand: dataRes.success ? (dataRes.data?.h3_demand || []) : [],
+      huff_params: { lambda: huffParams.lambda, alpha_area: huffParams.alpha_area, alpha_brand: huffParams.alpha_brand },
+      iterations: iterations || 200,
+    };
+
+    // 4. 调用Python引擎
+    if (scenarios && scenarios.length > 0) {
+      const result = await runScenarios({ ...gameReq, scenarios });
+      if (result.success) {
+        return res.json({ ...result.data, huff_source: huffParams.source });
+      }
+    } else {
+      const result = await solveGame(gameReq);
+      if (result.success) {
+        return res.json({ ...result.data, huff_source: huffParams.source });
+      }
+    }
+
+    // 5. 降级：使用旧版竞争分析
+    logger.warn({ projectId }, "[GameSolve] 降级到静态竞争分析");
+    const { batchCompetitionAnalysis } = require("../services/competitionService");
+    const competition = await batchCompetitionAnalysis(projectId, leader_candidates, industry);
+    return res.json({
+      fallback: true,
+      competition,
+      message: "计算引擎不可用，显示静态竞争分析。启动docker compose python-compute服务启用博弈求解。",
+    });
+
+  } catch (err: any) {
+    logger.error({ error: err.message }, "[GameSolve] Error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- POST /api/web/projects/:id/game/compare (auth required) ----
+router.post("/projects/:id/game/compare", authRequired, analysisLimiter, async (req: Request, res: Response) => {
+  const projectId = req.params.id;
+  const { leader_candidates, follower_candidates, plan_a_sites, plan_b_sites, industry, follower_q } = req.body;
+
+  if (!plan_a_sites?.length || !plan_b_sites?.length) {
+    return res.status(400).json({ error: "请提供方案A和方案B的候选点ID列表" });
+  }
+
+  try {
+    const dataRes = await prepareGameData(projectId, industry);
+    const huffParams = await getHuffParams(projectId, industry);
+
+    const result = await comparePlans({
+      project_id: projectId,
+      leader_candidates: (leader_candidates || []).map((c: any) => ({
+        id: c.id || c.name, lng: c.lng, lat: c.lat, area: c.area || 100, brand: c.brand || 0.5,
+      })),
+      follower_candidates: (follower_candidates || []).map((c: any) => ({
+        id: c.id || c.name, lng: c.lng, lat: c.lat, area: c.area || 100, brand: c.brand || 0.5,
+      })),
+      h3_demand: dataRes.success ? (dataRes.data?.h3_demand || []) : [],
+      huff_params: { lambda: huffParams.lambda, alpha_area: huffParams.alpha_area, alpha_brand: huffParams.alpha_brand },
+      plan_a_sites,
+      plan_b_sites,
+      follower_q: follower_q || 2,
+    });
+
+    if (result.success) {
+      return res.json({ ...result.data, huff_source: huffParams.source });
+    }
+
+    return res.json({ fallback: true, message: "计算引擎不可用" });
+
+  } catch (err: any) {
+    logger.error({ error: err.message }, "[GameCompare] Error");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- GET /api/web/projects/:id/game/huff-params (auth required) ----
+router.get("/projects/:id/game/huff-params", authRequired, async (req: Request, res: Response) => {
+  const projectId = req.params.id;
+  const industry = req.query.industry as string || undefined;
+
+  try {
+    const params = await getHuffParams(projectId, industry);
+    res.json(params);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
