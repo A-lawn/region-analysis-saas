@@ -11,26 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build .env
-        run: |
-          cat > .env << 'ENVEOF'
-          NODE_ENV=production
-          APP_URL=https://${{ secrets.ALIYUN_DOMAIN }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          ENC_KEY=${{ secrets.ENC_KEY }}
-          AMAP_WEB_KEY=${{ secrets.AMAP_WEB_KEY }}
-          AMAP_SERVER_KEY=${{ secrets.AMAP_SERVER_KEY }}
-          SMTP_HOST=${{ secrets.SMTP_HOST }}
-          SMTP_PORT=${{ secrets.SMTP_PORT }}
-          SMTP_USER=${{ secrets.SMTP_USER }}
-          SMTP_PASS=${{ secrets.SMTP_PASS }}
-          SMTP_FROM_EMAIL=${{ secrets.SMTP_FROM_EMAIL }}
-          BACKUP_RETENTION_DAYS=180
-          PYTHON_COMPUTE_URL=http://python-compute:8000
-          LOG_LEVEL=INFO
-          ENVEOF
-
       - name: Deploy to Alibaba Cloud
         uses: appleboy/ssh-action@v1
         with:
@@ -45,9 +25,23 @@ jobs:
             git fetch origin && git reset --hard origin/codex/v3.0-hybrid-compute-engine
 
             echo "[2/5] Updating .env..."
-            cp ~/deploy.env .env
-            echo "PYTHON_COMPUTE_URL=http://python-compute:8000" >> .env
-            echo "LOG_LEVEL=INFO" >> .env
+            cat > .env << 'ENVEOF'
+            NODE_ENV=production
+            APP_URL=https://${{ secrets.ALIYUN_DOMAIN }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            ENC_KEY=${{ secrets.ENC_KEY }}
+            AMAP_WEB_KEY=${{ secrets.AMAP_WEB_KEY }}
+            AMAP_SERVER_KEY=${{ secrets.AMAP_SERVER_KEY }}
+            SMTP_HOST=${{ secrets.SMTP_HOST }}
+            SMTP_PORT=${{ secrets.SMTP_PORT }}
+            SMTP_USER=${{ secrets.SMTP_USER }}
+            SMTP_PASS=${{ secrets.SMTP_PASS }}
+            SMTP_FROM_EMAIL=${{ secrets.SMTP_FROM_EMAIL }}
+            BACKUP_RETENTION_DAYS=180
+            PYTHON_COMPUTE_URL=http://python-compute:8000
+            LOG_LEVEL=INFO
+            ENVEOF
 
             echo "[3/5] Building and restarting services..."
             docker compose up -d --build --remove-orphans
