@@ -41,9 +41,12 @@ class HuffMLE:
         beta_base, beta_dist = params[:-1], params[-1]
         V = {}
         for sid in self.store_ids:
-            V[sid] = float(np.dot(beta_base, self.X_base[sid]) + beta_dist * self.distances.get(did,{}).get(sid,10.0)/1000.0)
+            raw = float(np.dot(beta_base, self.X_base[sid]) + beta_dist * self.distances.get(did,{}).get(sid,10.0)/1000.0)
+            V[sid] = raw if not np.isnan(raw) else -1e10
         V_arr = np.array([V[s] for s in self.store_ids])
         ls = logsumexp(V_arr)
+        if np.isnan(ls):
+            return {sid: 1.0/len(self.store_ids) for sid in self.store_ids}
         return {sid: float(np.exp(V[sid]-ls)) for sid in self.store_ids}
 
     def _neg_ll(self, params):
@@ -52,8 +55,12 @@ class HuffMLE:
             if did not in self.distances: continue
             probs = self._probs(params, did)
             for sid, w in self.weights[did].items():
-                nll -= w * np.log(max(probs.get(sid,1e-10),1e-10)); tw += w
-        return nll/max(tw,1.0)
+                p = max(probs.get(sid,1e-10),1e-10)
+                nll -= w * np.log(p); tw += w
+        if tw <= 0: return 1e10
+        val = nll / tw
+        if np.isnan(val): return 1e10
+        return float(val)
 
     def fit(self, initial=None):
         n = len(self.param_names)
@@ -71,14 +78,32 @@ class HuffMLE:
         ma = sum(actual.values())/max(len(self.store_ids),1)
         ss_tot = sum((actual.get(sid,0)-ma)**2 for sid in self.store_ids)
         r2 = 1 - ss_res/max(ss_tot,1e-10)
+        if np.isnan(r2) or np.isinf(r2): r2 = 0.0
         ll = -self._neg_ll(params)*n_obs
         aic = 2*n - 2*ll; bic = n*np.log(max(n_obs,1)) - 2*ll
+        if np.isnan(aic) or np.isinf(aic): aic = 1e6
+        if np.isnan(bic) or np.isinf(bic): bic = 1e6
+
+        fp = {}
+        for i,name in enumerate(self.param_names):
+            v = float(params[i])
+            fp[name] = round(v,6) if not np.isnan(v) else 0.0
+
+        se_clean = {}
+        for name in self.param_names:
+            v = se.get(name, 0)
+            se_clean[name] = round(float(v),6) if (v is not None and not np.isnan(float(v))) else None
+
+        ps = {}
+        for sid,s in pred.items():
+            ps[sid] = round(float(s),4) if not np.isnan(float(s)) else 0.0
 
         fr = HuffFitResult(
-            fitted_params={name:round(float(params[i]),6) for i,name in enumerate(self.param_names)},
-            r_squared=round(r2,4), aic=round(aic,2), bic=round(bic,2), convergence=converged,
-            standard_errors={name:round(float(se.get(name,0)),6) for name in self.param_names},
-            predicted_shares={sid:round(s,4) for sid,s in pred.items()}, n_observations=n_obs)
+            fitted_params=fp,
+            r_squared=round(float(r2),4), aic=round(float(aic),2), bic=round(float(bic),2),
+            convergence=converged,
+            standard_errors=se_clean,
+            predicted_shares=ps, n_observations=n_obs)
         logger.info("Huff fit done: R2=%.3f AIC=%.0f", r2, aic)
         return fr
 
@@ -93,8 +118,11 @@ class HuffMLE:
                     h = (self._neg_ll(p_ij)-self._neg_ll(p_i)-self._neg_ll(p_j)+f0)/(eps*eps)
                     hessian[i,j]=h; hessian[j,i]=h
             cov = np.linalg.inv(hessian)
-            return {name: float(np.sqrt(max(cov[i,i],0))) for i,name in enumerate(self.param_names)}
-        except: return {name: float("nan") for name in self.param_names}
+            se = {name: float(np.sqrt(max(cov[i,i],0))) for i,name in enumerate(self.param_names)}
+            # Replace NaN/Inf with None
+            return {k: (None if (np.isnan(v) or np.isinf(v)) else v) for k,v in se.items()}
+        except:
+            return {name: None for name in self.param_names}
 
     def _predict(self, params):
         shares, total = {sid:0.0 for sid in self.store_ids}, 0.0

@@ -12,6 +12,7 @@ from app.services.game_theory import StackelbergSolver, StoreInfo, DemandInfo
 from app.services.huff import HuffMLE
 from app.services.data_loader import load_project_points, load_huff_observations
 from app.utils.logger import get_logger
+import math
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -302,14 +303,19 @@ async def huff_fit(req: HuffFitRequest):
 
         elapsed = round((time.time() - t0) * 1000)
 
+        def _safe(v):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                return None
+            return v
+
         return _ok({
-            "fitted_params": result.fitted_params,
-            "r_squared": result.r_squared,
-            "aic": result.aic,
-            "bic": result.bic,
+            "fitted_params": {k: _safe(v) for k,v in result.fitted_params.items()},
+            "r_squared": _safe(result.r_squared),
+            "aic": _safe(result.aic),
+            "bic": _safe(result.bic),
             "convergence": result.convergence,
-            "standard_errors": result.standard_errors,
-            "predicted_shares": result.predicted_shares,
+            "standard_errors": {k: _safe(v) for k,v in result.standard_errors.items()},
+            "predicted_shares": {k: _safe(v) for k,v in result.predicted_shares.items()},
             "n_observations": result.n_observations,
             "note": "λ = abs(dist参数), α_area = area参数, α_brand = brand参数",
         }, {"compute_time_ms": elapsed})
