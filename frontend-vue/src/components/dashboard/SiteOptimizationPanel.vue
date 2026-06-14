@@ -181,11 +181,118 @@ B,116.420000,39.915000"></textarea>
         </div>
         <p class="huff-hint" v-if="huffOverride">已手动修改参数，重新推演时将使用当前值</p>
         <div class="huff-footer">
+          <button class="btn-text accent" @click="showCalibration = true">快速标定</button>
           <button class="btn-text" @click="resetHuffParams" :disabled="!huffOverride">重置</button>
           <button class="btn-text" @click="loadHuffParams" :disabled="huffLoading">刷新</button>
         </div>
       </div>
 
+
+
+      <!-- ═══ Calibration Modal ═══ -->
+      <Teleport to="body">
+        <Transition name="sheet">
+          <div v-if="showCalibration" class="sheet-overlay" @click.self="showCalibration = false">
+            <div class="sheet-panel calib-panel">
+              <div class="sheet-head">
+                <span class="sheet-title">快速标定 Huff 参数</span>
+                <span class="sheet-subtitle">回答 3 个问题，系统自动推演模型参数</span>
+              </div>
+
+              <div class="calib-body">
+                <!-- Q1 -->
+                <div class="calib-q">
+                  <div class="calib-q-head">
+                    <span class="calib-q-num">1</span>
+                    <span class="calib-q-text">你认为顾客最多愿意步行多远去你的店？</span>
+                  </div>
+                  <div class="calib-opts">
+                    <label class="calib-opt" :class="{ active: calibAnswers.q1 === '300m' }">
+                      <input type="radio" v-model="calibAnswers.q1" value="300m" class="calib-radio" />
+                      <span class="calib-opt-label">300m</span>
+                      <span class="calib-opt-desc">地铁口/商圈核心</span>
+                    </label>
+                    <label class="calib-opt" :class="{ active: calibAnswers.q1 === '500m' }">
+                      <input type="radio" v-model="calibAnswers.q1" value="500m" class="calib-radio" />
+                      <span class="calib-opt-label">500m</span>
+                      <span class="calib-opt-desc">一般城市街区</span>
+                    </label>
+                    <label class="calib-opt" :class="{ active: calibAnswers.q1 === '1km' }">
+                      <input type="radio" v-model="calibAnswers.q1" value="1km" class="calib-radio" />
+                      <span class="calib-opt-label">1km</span>
+                      <span class="calib-opt-desc">郊区/社区商业</span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Q2 -->
+                <div class="calib-q">
+                  <div class="calib-q-head">
+                    <span class="calib-q-num">2</span>
+                    <span class="calib-q-text">品牌与面积，哪个更能吸引顾客？</span>
+                  </div>
+                  <div class="calib-opts">
+                    <label class="calib-opt" :class="{ active: calibAnswers.q2 === 'brand' }">
+                      <input type="radio" v-model="calibAnswers.q2" value="brand" class="calib-radio" />
+                      <span class="calib-opt-label">品牌远大于面积</span>
+                      <span class="calib-opt-desc">例：7-ELEVEN vs 个体店</span>
+                    </label>
+                    <label class="calib-opt" :class="{ active: calibAnswers.q2 === 'balanced' }">
+                      <input type="radio" v-model="calibAnswers.q2" value="balanced" class="calib-radio" />
+                      <span class="calib-opt-label">两者相当</span>
+                      <span class="calib-opt-desc">面积和品牌同样重要</span>
+                    </label>
+                    <label class="calib-opt" :class="{ active: calibAnswers.q2 === 'area' }">
+                      <input type="radio" v-model="calibAnswers.q2" value="area" class="calib-radio" />
+                      <span class="calib-opt-label">面积远大于品牌</span>
+                      <span class="calib-opt-desc">例：仓储超市 / 大卖场</span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Q3 -->
+                <div class="calib-q">
+                  <div class="calib-q-head">
+                    <span class="calib-q-num">3</span>
+                    <span class="calib-q-text">你的市场属于哪种竞争格局？</span>
+                  </div>
+                  <div class="calib-opts">
+                    <label class="calib-opt" :class="{ active: calibAnswers.q3 === 'winner_takes_all' }">
+                      <input type="radio" v-model="calibAnswers.q3" value="winner_takes_all" class="calib-radio" />
+                      <span class="calib-opt-label">赢家通吃</span>
+                      <span class="calib-opt-desc">最近者获得绝大多数客流</span>
+                    </label>
+                    <label class="calib-opt" :class="{ active: calibAnswers.q3 === 'coexistence' }">
+                      <input type="radio" v-model="calibAnswers.q3" value="coexistence" class="calib-radio" />
+                      <span class="calib-opt-label">多家共存</span>
+                      <span class="calib-opt-desc">2-3 家共享周边客流</span>
+                    </label>
+                    <label class="calib-opt" :class="{ active: calibAnswers.q3 === 'dispersed' }">
+                      <input type="radio" v-model="calibAnswers.q3" value="dispersed" class="calib-radio" />
+                      <span class="calib-opt-label">长尾分布</span>
+                      <span class="calib-opt-desc">消费者分散选择</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="calib-result" v-if="calibPreview">
+                <span class="calib-result-label">预览参数</span>
+                <div class="calib-result-grid">
+                  <span class="calib-result-item">λ <strong>{{ calibPreview.lambda.toFixed(1) }}</strong></span>
+                  <span class="calib-result-item">α_area <strong>{{ calibPreview.alpha_area.toFixed(1) }}</strong></span>
+                  <span class="calib-result-item">α_brand <strong>{{ calibPreview.alpha_brand.toFixed(1) }}</strong></span>
+                </div>
+              </div>
+
+              <div class="sheet-actions">
+                <button class="btn-secondary" @click="showCalibration = false">取消</button>
+                <button class="btn-primary" @click="applyCalibration" :disabled="!calibComplete">应用<span v-if="calibComplete"> → λ={{ calibPreview?.lambda.toFixed(1) }}</span></button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
       <button class="btn-primary" @click="runGameSolve" :disabled="gameLoading || !gameLeaderCandidates.length">
         {{ gameLoading ? '推演中...' : '开始推演' }}
       </button>
@@ -408,6 +515,44 @@ const huffParams = ref<HuffParams | null>(null)
 const huffLoading = ref(false)
 const huffOverride = ref(false)
 const huffOverrideValues = reactive({ lambda: 2.0, alpha_area: 0.5, alpha_brand: 0.8 })
+
+// ── Calibration ──
+const showCalibration = ref(false)
+const calibAnswers = reactive({ q1: '', q2: '', q3: '' })
+const calibComplete = computed(() => !!(calibAnswers.q1 && calibAnswers.q2 && calibAnswers.q3))
+
+const DISTANCE_MAP: Record<string, number> = { '300m': 4.0, '500m': 2.5, '1km': 1.5 }
+const BRAND_MAP: Record<string, { ab: number; aa: number }> = {
+  brand: { ab: 1.2, aa: 0.3 },
+  balanced: { ab: 0.7, aa: 0.5 },
+  area: { ab: 0.3, aa: 1.0 },
+}
+const COMPETITION_ADJ: Record<string, number> = {
+  winner_takes_all: 1.0,
+  coexistence: 0.0,
+  dispersed: -0.5,
+}
+
+const calibPreview = computed(() => {
+  if (!calibComplete.value) return null
+  const baseLambda = DISTANCE_MAP[calibAnswers.q1]
+  const adj = COMPETITION_ADJ[calibAnswers.q3]
+  const { ab, aa } = BRAND_MAP[calibAnswers.q2]
+  return {
+    lambda: Math.max(0.3, baseLambda + adj),
+    alpha_brand: ab,
+    alpha_area: aa,
+  }
+})
+
+function applyCalibration() {
+  if (!calibPreview.value) return
+  huffOverrideValues.lambda = calibPreview.value.lambda
+  huffOverrideValues.alpha_area = calibPreview.value.alpha_area
+  huffOverrideValues.alpha_brand = calibPreview.value.alpha_brand
+  huffOverride.value = true
+  showCalibration.value = false
+}
 
 // ── Compare ──
 const compareEdit = ref<'A' | 'B'>('A')
@@ -1110,4 +1255,79 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 }
 .leg-item { display: flex; align-items: center; gap: 4px; }
 .leg-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* ═══ Calibration Modal ═══ */
+.sheet-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.32);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+}
+.sheet-panel {
+  background: var(--color-bg-card);
+  border-radius: 20px;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.18);
+  max-width: 480px; width: 92vw; max-height: 85vh;
+  overflow-y: auto;
+  padding: 28px 28px 20px;
+}
+.sheet-head { margin-bottom: 20px; }
+.sheet-title { font-size: 17px; font-weight: 600; color: var(--color-text-primary); display: block; }
+.sheet-subtitle { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; display: block; }
+
+.sheet-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+/* ── calibration content ── */
+.calib-body { display: flex; flex-direction: column; gap: 18px; }
+.calib-q { }
+.calib-q-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.calib-q-num {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff; font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.calib-q-text { font-size: 13px; font-weight: 500; color: var(--color-text-primary); line-height: 1.4; }
+.calib-opts { display: flex; flex-direction: column; gap: 6px; padding-left: 28px; }
+.calib-opt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-light);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.calib-opt:hover { border-color: var(--color-border); background: var(--color-bg-card-hover); }
+.calib-opt.active { border-color: var(--color-accent); background: rgba(0,122,255,0.06); }
+.calib-radio { display: none; }
+.calib-opt-label { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+.calib-opt-desc { font-size: 11px; color: var(--color-text-tertiary); margin-left: auto; }
+
+.calib-result {
+  margin-top: 16px; padding: 14px 16px;
+  background: rgba(0,122,255,0.06);
+  border-radius: 10px;
+  border: 1px solid rgba(0,122,255,0.12);
+}
+.calib-result-label { font-size: 11px; color: var(--color-text-tertiary); display: block; margin-bottom: 8px; }
+.calib-result-grid { display: flex; gap: 16px; }
+.calib-result-item { font-size: 12px; color: var(--color-text-secondary); }
+.calib-result-item strong { color: var(--color-text-primary); font-weight: 600; font-family: var(--font-mono); }
+
+/* ── Sheet transition ── */
+.sheet-enter-active { transition: all 0.25s ease-out; }
+.sheet-leave-active { transition: all 0.15s ease-in; }
+.sheet-enter-from { opacity: 0; }
+.sheet-enter-from .sheet-panel { transform: translateY(12px) scale(0.97); opacity: 0; }
+.sheet-leave-to { opacity: 0; }
+.sheet-leave-to .sheet-panel { transform: translateY(8px) scale(0.98); opacity: 0; }
+
+.btn-text.accent { color: var(--color-accent); }
+.btn-text.accent:hover { color: #0055CC; }
 </style>
