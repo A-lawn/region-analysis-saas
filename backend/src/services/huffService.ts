@@ -174,6 +174,11 @@ export async function getHuffParams(
             observations,
           });
 
+          if (!result.success) {
+            logger.warn({ projectId, error: result.error, n_stores: storeIds.length, n_obs: observations.length },
+              "[Huff] Python引擎MLE返回失败");
+          }
+
           if (result.success && result.data) {
             const fitted = result.data;
             const params: HuffParams = {
