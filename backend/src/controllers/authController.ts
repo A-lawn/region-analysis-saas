@@ -215,7 +215,7 @@ router.post(
       { id: user.id },
     );
 
-    const accessToken = generateAccessToken({
+    const accessToken = await generateAccessToken({
       userId: user.id,
       tenantId: user.tenant_id,
       email: user.email,
@@ -309,7 +309,7 @@ router.post(
       { id: user.id },
     );
 
-    const accessToken = generateAccessToken({
+    const accessToken = await generateAccessToken({
       userId: user.id,
       tenantId: user.tenant_id,
       email: user.email,
@@ -461,7 +461,7 @@ router.post(
       token: refreshToken,
     });
 
-    const access = generateAccessToken({
+    const access = await generateAccessToken({
       userId: record.user_id,
       tenantId: record.tenant_id,
       email: record.email,
@@ -509,3 +509,4 @@ router.post(
 );
 
 export default router;
+

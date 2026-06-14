@@ -23,7 +23,7 @@ export interface ComputeResponse<T = any> {
 
 function signBody(body: Record<string, unknown>): string {
   return crypto
-    .createHmac("sha256", config.jwtSecret)
+    .createHmac("sha256", process.env.JWT_SECRET || '')
     .update(JSON.stringify(body))
     .digest("hex");
 }
@@ -59,10 +59,10 @@ export async function computeRequest<TRes = any>(
         elapsed,
         error: errBody,
       }, "[ComputeClient] Python engine returned error");
-      return { success: false, error: errBody?.error || { code: "HTTP_ERROR", message: `HTTP ${resp.status}` } };
+      return { success: false, error: (errBody as any)?.error || { code: "HTTP_ERROR", message: `HTTP ${resp.status}` } };
     }
 
-    const result: ComputeResponse<TRes> = await resp.json();
+    const result = await resp.json() as ComputeResponse<TRes>;
 
     logger.info({
       path,
@@ -193,3 +193,5 @@ export async function checkEngineHealth(): Promise<boolean> {
     return false;
   }
 }
+
+
