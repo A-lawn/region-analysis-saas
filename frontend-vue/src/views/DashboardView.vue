@@ -62,13 +62,13 @@
               <CoveragePanel v-if="activeTab === 'coverage'" :project-id="projectId" @result="handleCoverage" :key="'coverage'" />
               <HeatmapPanel v-else-if="activeTab === 'heatmap'" :project-id="projectId" :industry="detectedIndustry" @result="handleHeatmap" :key="'heatmap'" />
               <ClusterPanel v-else-if="activeTab === 'cluster'" :project-id="projectId" @result="handleCluster" :key="'cluster'" />
-              <SiteOptimizationPanel v-else-if="activeTab === 'site'" :project-id="projectId" :clicked-candidate="siteClickPoint" @result="handleSite" :key="'site'" />
+              <SiteOptimizationPanel v-else-if="activeTab === 'site'" :project-id="projectId" :clicked-candidate="siteClickPoint" @result="handleSite" @markers-update="(g: any) => siteMarkerGroups = g" :key="'site'" />
               <H3HexagonPanel v-else-if="activeTab === 'h3'" :project-id="projectId" @result="handleH3" :key="'h3'" />
             </Transition>
           </div>
         </aside>
         <main class="map-area">
-          <MapContainer :points="validPoints" :marker-groups="siteMarkerGroups" :click-enabled="clickEnabled" @ready="onMapReady" @map-click="handleMapClick" />
+          <MapContainer :points="activeTab === 'site' ? [] : validPoints" :marker-groups="siteMarkerGroups" :click-enabled="clickEnabled" @ready="onMapReady" @map-click="handleMapClick" />
         </main>
       </div>
     </template>
@@ -292,7 +292,7 @@ function handleCluster(data: ClusterResult) {
   show('聚类分析完成: ' + data.clusters.length + ' 个聚类', 'success')
 }
 
-function handleSite(data: SiteOptimizationResult) {
+function handleSite(data: any) {
   clearOverlays(); siteMarkerGroups.value = []
   if (!data.candidates?.length) { show('未找到候选位置', 'info'); return }
   const colors = [getComputedStyle(document.documentElement).getPropertyValue('--color-error').trim() || '#FF3B30',

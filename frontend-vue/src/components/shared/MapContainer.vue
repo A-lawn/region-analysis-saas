@@ -43,6 +43,7 @@ onMounted(async () => {
     const map = await initMap(mapId, props.center, props.zoom)
     emit('ready', map)
     renderPoints()
+    if (props.markerGroups && props.markerGroups.length) renderMarkerGroups()
     toggleMapClick(map, props.clickEnabled ?? false)
   } catch (e: any) {
     error.value = e.message || '地图加载失败'
@@ -80,6 +81,14 @@ function renderPoints() {
     addMarkers(props.points)
   }
 }
+
+watch(
+  () => props.markerGroups,
+  (newVal) => {
+    if (!loading.value && newVal) renderMarkerGroups()
+  },
+  { deep: true }
+)
 
 watch(
   () => props.points,
