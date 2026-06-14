@@ -1,0 +1,67 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .env
+        run: |
+          cat > .env << 'ENVEOF'
+          NODE_ENV=production
+          APP_URL=https://${{ secrets.ALIYUN_DOMAIN }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          ENC_KEY=${{ secrets.ENC_KEY }}
+          AMAP_WEB_KEY=${{ secrets.AMAP_WEB_KEY }}
+          AMAP_SERVER_KEY=${{ secrets.AMAP_SERVER_KEY }}
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_PORT=${{ secrets.SMTP_PORT }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASS=${{ secrets.SMTP_PASS }}
+          SMTP_FROM_EMAIL=${{ secrets.SMTP_FROM_EMAIL }}
+          BACKUP_RETENTION_DAYS=180
+          PYTHON_COMPUTE_URL=http://python-compute:8000
+          LOG_LEVEL=INFO
+          ENVEOF
+
+      - name: Deploy to Alibaba Cloud
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ALIYUN_HOST }}
+          username: ${{ secrets.ALIYUN_USER }}
+          key: ${{ secrets.ALIYUN_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/region-analysis
+
+            echo "[1/5] Pulling latest code..."
+            git pull origin main
+
+            echo "[2/5] Updating .env..."
+            cp ~/deploy.env .env
+            echo "PYTHON_COMPUTE_URL=http://python-compute:8000" >> .env
+            echo "LOG_LEVEL=INFO" >> .env
+
+            echo "[3/5] Building and restarting services..."
+            docker compose up -d --build --remove-orphans
+
+            echo "[4/5] Waiting for health checks..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+                echo "  Backend healthy"
+                break
+              fi
+              sleep 2
+            done
+
+            echo "[5/5] Cleaning old images..."
+            docker image prune -af --filter "until=24h" || true
+
+            echo "Deploy complete!"
