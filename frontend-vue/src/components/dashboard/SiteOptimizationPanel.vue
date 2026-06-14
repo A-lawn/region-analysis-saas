@@ -124,10 +124,10 @@ B,116.420000,39.915000"></textarea>
           <div v-for="(c, i) in gameLeaderCandidates" :key="c.id" class="point-row leader-row">
             <span class="point-idx">{{ i + 1 }}</span>
             <input v-model="c.name" class="point-input" placeholder="点位名称" />
-            <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" />
-            <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" />
-            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" />
-            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" />
+            <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" :title="String(c.lng)" />
+            <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" :title="String(c.lat)" />
+            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" :title="'面积: '+c.area+'㎡'" />
+            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" :title="'品牌分: '+c.brand" />
             <button class="point-del" @click="removeLeader(i)" title="删除">×</button>
           </div>
         </div>
@@ -268,10 +268,10 @@ B,116.420000,39.915000"></textarea>
           <div v-for="(c, i) in planACandidates" :key="c.id" class="point-row plan-a-row">
             <span class="point-idx plan-a-idx">{{ i + 1 }}</span>
             <input v-model="c.name" class="point-input" placeholder="点位名称" />
-            <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" />
-            <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" />
-            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" />
-            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" />
+            <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" :title="String(c.lng)" />
+            <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" :title="String(c.lat)" />
+            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" :title="'面积: '+c.area+'㎡'" />
+            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" :title="'品牌分: '+c.brand" />
             <button class="point-del" @click="removePlanA(i)" title="删除">×</button>
           </div>
         </div>
@@ -293,10 +293,10 @@ B,116.420000,39.915000"></textarea>
           <div v-for="(c, i) in planBCandidates" :key="c.id" class="point-row plan-b-row">
             <span class="point-idx plan-b-idx">{{ i + 1 }}</span>
             <input v-model="c.name" class="point-input" placeholder="点位名称" />
-            <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" />
-            <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" />
-            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" />
-            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" />
+            <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" :title="String(c.lng)" />
+            <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" :title="String(c.lat)" />
+            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" :title="'面积: '+c.area+'㎡'" />
+            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" :title="'品牌分: '+c.brand" />
             <button class="point-del" @click="removePlanB(i)" title="删除">×</button>
           </div>
         </div>
@@ -852,13 +852,12 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 }
 .point-input {
   padding: 4px 6px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-light);
   border-radius: 5px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
   font-family: var(--font-system);
   color: var(--color-text-primary);
-  background: var(--color-bg-input);
+  background: var(--color-bg-card-solid);
   flex: 1;
   min-width: 0;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
