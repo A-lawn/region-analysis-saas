@@ -231,6 +231,19 @@ database/migrations/
 
 ## 版本历史
 
+### v3.0 (In Progress) — branch: codex/v3.0-hybrid-compute-engine
+
+- **混合计算架构**: Express 网关 + Python/FastAPI 计算引擎 (端口 8000)
+- **Huff 引力模型 MLE 拟合**: scipy L-BFGS-B 参数估计，替代硬编码默认值
+- **博弈选址求解**: 双层规划 (leader-follower)，P0 硬约束过滤 + P1 鲁棒求解
+- **选址模块 UX 重构**: Apple HIG 设计风格，地图点击选点，多色标注按角色分层渲染
+- **候选点管理**: 面板品牌分/面积编辑，列头标签，hover tooltip 显示完整数值
+- **竞品候选池**: 导入数据点灰色标注 + 行业筛选 + metadata brand/area 动态读取
+- **Huff 参数 Plan B**: 便利店 λ 3.0→2.0, α_brand 0.5→0.8 (小业态高品牌溢价)
+- **设计 Token 统一**: 全部组件迁移至 tokens.css (SF Pro Display / 4px grid / 毛玻璃)
+- **A/B 方案对比**: 方案 A 绿色/方案 B 橙色标注 + 营收/蚕食率/市占率对比
+- 商业可用度: ~55%
+
 ### v2.0 (Current) — branch: codex/v2.0-refactor
 
 - 12 行业深度模型 + DB 可配置
@@ -243,9 +256,3 @@ database/migrations/
 - KPI 中文显示 + 行业不匹配友好提示
 - 安全审计: SQL 注入修复 / 请求日志 / 脱敏
 - 商业可用度: ~70%
-
-### v1.0 (MVP) — branch: main
-
-- 覆盖分析 / 热力图 / 聚类 / 选址优化 / H3 / 上传 / 报告
-- 5 行业硬编码模型
-- 商业可用度: ~40%
