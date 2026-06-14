@@ -15,7 +15,7 @@ export async function loadIndustryConfig(industry: string): Promise<IndustryConf
   if (!industry) return null;
 
   try {
-    const result = await db.query(
+    const rows = await db.manyOrNone(
       `SELECT 
         industry, display_name, radius_meters, weights,
         analysis_params, decision_thresholds, benchbarks, kpi_weights
@@ -24,23 +24,23 @@ export async function loadIndustryConfig(industry: string): Promise<IndustryConf
       [industry]
     );
 
-    if (result.rows.length === 0) {
+    if (rows.length === 0) {
       logger.warn({ industry }, "[IndustryConfig] Industry not found in DB");
       return null;
     }
 
-    const row = result.rows[0];
+    const row = rows[0];
     const ap = row.analysis_params || {};
     const weightsMapping = (row.kpi_weights && typeof row.kpi_weights === 'object' && Object.keys(row.kpi_weights).length > 0) ? row.kpi_weights : ((row.weights && row.weights.kpi_mapping) || {});
 
     // Load keywords
     let keywords: string[] = [];
     try {
-      const kwResult = await db.query(
+      const kwRows = await db.manyOrNone(
         `SELECT keyword FROM industry_keywords WHERE industry = \$1 ORDER BY priority DESC`,
         [industry]
       );
-      keywords = (kwResult.rows || []).map((r: any) => r.keyword);
+      keywords = (kwRows || []).map((r: any) => r.keyword);
     } catch {
       // keywords lookup failed — use empty
     }
@@ -87,7 +87,7 @@ export async function loadIndustryConfig(industry: string): Promise<IndustryConf
  */
 export async function loadAllIndustryConfigs(): Promise<IndustryConfig[]> {
   try {
-    const result = await db.query(
+    const rows = await db.manyOrNone(
       `SELECT 
         industry, display_name, radius_meters, weights,
         analysis_params, decision_thresholds, benchbarks, kpi_weights
@@ -96,7 +96,7 @@ export async function loadAllIndustryConfigs(): Promise<IndustryConfig[]> {
     );
 
     const configs: IndustryConfig[] = [];
-    for (const row of result.rows) {
+    for (const row of rows) {
       const ap = row.analysis_params || {};
       const weightsMapping = (row.kpi_weights && typeof row.kpi_weights === 'object' && Object.keys(row.kpi_weights).length > 0) ? row.kpi_weights : ((row.weights && row.weights.kpi_mapping) || {});
       configs.push({
@@ -135,15 +135,15 @@ export async function detectIndustry(categoryName: string): Promise<string | nul
   const normalized = categoryName.trim();
 
   try {
-    const result = await db.query(
+    const rows = await db.manyOrNone(
       `SELECT industry FROM industry_keywords
        WHERE \$1 ILIKE '%' || keyword || '%'
        ORDER BY priority DESC
        LIMIT 1`,
       [normalized]
     );
-    if (result.rows.length > 0) {
-      return result.rows[0].industry;
+    if (rows.length > 0) {
+      return rows[0].industry;
     }
   } catch (err: any) {
     logger.warn({ error: err.message }, "[IndustryConfig] Keyword detection DB query failed");
@@ -163,3 +163,4 @@ export function getDefaultRadius(industry: string): number {
   const entry = DEFAULT_INDUSTRY_RADII.find(r => r.industry === industry);
   return entry?.radiusMeters || 500;
 }
+
