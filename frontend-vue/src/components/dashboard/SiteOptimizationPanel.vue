@@ -111,6 +111,15 @@ B,116.420000,39.915000"></textarea>
       <!-- Leader candidate list -->
       <div class="field" v-if="gameLeaderCandidates.length > 0">
         <label class="field-label">我方候选点</label>
+        <div class="point-header">
+          <span class="point-hdr-idx">#</span>
+          <span class="point-hdr-name">名称</span>
+          <span class="point-hdr-coord">经度</span>
+          <span class="point-hdr-coord">纬度</span>
+          <span class="point-hdr-coord sm">面积</span>
+          <span class="point-hdr-coord sm">品牌分</span>
+          <span class="point-hdr-del"></span>
+        </div>
         <div class="point-list">
           <div v-for="(c, i) in gameLeaderCandidates" :key="c.id" class="point-row leader-row">
             <span class="point-idx">{{ i + 1 }}</span>
@@ -246,6 +255,15 @@ B,116.420000,39.915000"></textarea>
       <!-- Plan A points -->
       <div class="field" v-if="planACandidates.length > 0">
         <label class="field-label" style="color:#34C759">方案 A 候选点</label>
+        <div class="point-header">
+          <span class="point-hdr-idx">#</span>
+          <span class="point-hdr-name">名称</span>
+          <span class="point-hdr-coord">经度</span>
+          <span class="point-hdr-coord">纬度</span>
+          <span class="point-hdr-coord sm">面积</span>
+          <span class="point-hdr-coord sm">品牌分</span>
+          <span class="point-hdr-del"></span>
+        </div>
         <div class="point-list">
           <div v-for="(c, i) in planACandidates" :key="c.id" class="point-row plan-a-row">
             <span class="point-idx plan-a-idx">{{ i + 1 }}</span>
@@ -262,6 +280,15 @@ B,116.420000,39.915000"></textarea>
       <!-- Plan B points -->
       <div class="field" v-if="planBCandidates.length > 0">
         <label class="field-label" style="color:#FF9500">方案 B 候选点</label>
+        <div class="point-header">
+          <span class="point-hdr-idx">#</span>
+          <span class="point-hdr-name">名称</span>
+          <span class="point-hdr-coord">经度</span>
+          <span class="point-hdr-coord">纬度</span>
+          <span class="point-hdr-coord sm">面积</span>
+          <span class="point-hdr-coord sm">品牌分</span>
+          <span class="point-hdr-del"></span>
+        </div>
         <div class="point-list">
           <div v-for="(c, i) in planBCandidates" :key="c.id" class="point-row plan-b-row">
             <span class="point-idx plan-b-idx">{{ i + 1 }}</span>
@@ -855,6 +882,20 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
   flex-shrink: 0;
 }
 .point-del:hover { background: var(--color-error-bg); color: var(--color-error); }
+
+/* ── Point column headers ── */
+.point-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  margin-bottom: 2px;
+}
+.point-hdr-idx { width: 20px; font-size: 9px; font-weight: 500; color: var(--color-text-tertiary); text-align: center; flex-shrink: 0; }
+.point-hdr-name { flex: 1; font-size: 9px; font-weight: 500; color: var(--color-text-tertiary); min-width: 0; }
+.point-hdr-coord { font-size: 9px; font-weight: 500; color: var(--color-text-tertiary); max-width: 85px; flex: 1; min-width: 0; text-align: center; }
+.point-hdr-coord.sm { max-width: 58px; }
+.point-hdr-del { width: 22px; flex-shrink: 0; }
 
 /* ── Huff card ── */
 .huff-card {
