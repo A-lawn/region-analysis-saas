@@ -187,6 +187,103 @@ export interface IndustryConfig {
   benchmarks: Record<string, any>
 }
 
+
+// ===== Game Theory (v3.0) =====
+export interface HuffParams {
+  lambda: number
+  alpha_area: number
+  alpha_brand: number
+  source: "mle" | "cached_mle" | "benchmark" | "default"
+  r_squared?: number
+  aic?: number
+  n_observations?: number
+}
+
+export interface GameCandidate {
+  id: string
+  lng: number
+  lat: number
+  area?: number
+  brand?: number
+  name?: string
+}
+
+export interface GameSolveRequest {
+  leader_candidates: GameCandidate[]
+  follower_candidates: GameCandidate[]
+  leader_p: number
+  follower_q: number
+  industry?: string
+  scenarios?: ScenarioItem[]
+  iterations?: number
+}
+
+export interface ScenarioItem {
+  label: string
+  type: "counter_attack" | "what_if_follower_exists"
+  follower_q_override?: number
+}
+
+export interface MarketShare {
+  leader: number
+  follower: number
+  uncovered: number
+}
+
+export interface GameSolveResponse {
+  leader_sites: string[]
+  leader_revenue: number
+  follower_sites: string[]
+  follower_revenue: number
+  cannibalization_pct: number
+  market_share: MarketShare
+  solver_stats: Record<string, any>
+  huff_source?: string
+  fallback?: boolean
+  robust?: {
+    stability_score: number
+    selection_frequencies: Record<string, number>
+    sensitivity_warning?: string
+  }
+}
+
+export interface GameCompareResponse {
+  plan_a: {
+    leader_revenue: number
+    follower_best_attack: { sites: string[]; revenue: number }
+    cannibalization_pct: number
+    coverage_population: number
+  }
+  plan_b: {
+    leader_revenue: number
+    follower_best_attack: { sites: string[]; revenue: number }
+    cannibalization_pct: number
+    coverage_population: number
+  }
+  recommendation: {
+    winner: "plan_a" | "plan_b"
+    reason: string
+  }
+  huff_source?: string
+  fallback?: boolean
+}
+
+export interface WhiteSpaceRisk {
+  h3: string
+  lng: number
+  lat: number
+  population: number
+  risk_level: "high" | "medium" | "low"
+  revenue_loss_pct?: number
+}
+
+export interface ClusterVulnerability {
+  clusterId: number
+  pointCount: number
+  vulnerability_pct: number
+  risk_level: "high" | "medium" | "low"
+}
+
 export interface IndustryListItem {
   industry: string
   label: string

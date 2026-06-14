@@ -133,6 +133,84 @@ export async function purgeAllDeletedProjects(): Promise<{ purged: number }> {
 }
 
 
+
+// ===== Game Theory APIs (v3.0) =====
+import type { GameSolveResponse, GameCompareResponse, HuffParams, GameCandidate, ScenarioItem } from '@/types'
+
+export async function solveGame(
+  projectId: string,
+  leaderCandidates: GameCandidate[],
+  followerCandidates: GameCandidate[],
+  leaderP: number,
+  followerQ: number,
+  industry?: string,
+  iterations?: number,
+): Promise<GameSolveResponse> {
+  const { data } = await apiClient.post(`/projects/${projectId}/game/solve`, {
+    leader_candidates: leaderCandidates,
+    follower_candidates: followerCandidates,
+    leader_p: leaderP,
+    follower_q: followerQ,
+    industry,
+    iterations,
+  })
+  return data
+}
+
+export async function runGameScenarios(
+  projectId: string,
+  leaderCandidates: GameCandidate[],
+  followerCandidates: GameCandidate[],
+  leaderP: number,
+  followerQ: number,
+  industry: string | undefined,
+  scenarios: ScenarioItem[],
+  iterations?: number,
+): Promise<GameSolveResponse> {
+  const { data } = await apiClient.post(`/projects/${projectId}/game/solve`, {
+    leader_candidates: leaderCandidates,
+    follower_candidates: followerCandidates,
+    leader_p: leaderP,
+    follower_q: followerQ,
+    industry,
+    scenarios,
+    iterations,
+  })
+  return data
+}
+
+export async function compareGamePlans(
+  projectId: string,
+  leaderCandidates: GameCandidate[],
+  followerCandidates: GameCandidate[],
+  planASites: string[],
+  planBSites: string[],
+  followerQ: number,
+  industry?: string,
+): Promise<GameCompareResponse> {
+  const { data } = await apiClient.post(`/projects/${projectId}/game/compare`, {
+    leader_candidates: leaderCandidates,
+    follower_candidates: followerCandidates,
+    plan_a_sites: planASites,
+    plan_b_sites: planBSites,
+    follower_q: followerQ,
+    industry,
+  })
+  return data
+}
+
+export async function getHuffParams(projectId: string, industry?: string): Promise<HuffParams> {
+  const { data } = await apiClient.get(`/projects/${projectId}/game/huff-params`, {
+    params: { industry },
+  })
+  return data
+}
+
+export async function checkComputeHealth(): Promise<{ engine: string }> {
+  const { data } = await apiClient.get('/compute/health')
+  return data
+}
+
 // ===== Industry APIs (v2.0) =====
 export async function getIndustries(): Promise<{ models: any[]; kpiDisplayNames?: Record<string, string> }> {
   const { data } = await apiClient.get('/industries')

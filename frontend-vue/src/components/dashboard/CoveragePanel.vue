@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="panel">
     <h4 class="panel-title">覆盖范围分析</h4>
     <div class="param-group">
@@ -36,6 +36,12 @@
       <label class="checkbox-label">
         <input type="checkbox" v-model="showVoronoi" />
         叠加服务域（泰森多边形）
+      </label>
+    </div>
+    <div class="param-group">
+      <label class="checkbox-label">
+        <input type="checkbox" v-model="showGameOverlay" />
+        博弈盲区风险评估
       </label>
     </div>
     <div class="param-group">
@@ -260,6 +266,7 @@ const values = ref<any>({ radius: 1000 })
 const multiRadius = ref(false)
 const decayMode = ref(false)
 const showWhiteSpace = ref(false)
+const showGameOverlay = ref(false)
 const showVoronoi = ref(false)
 const voronoiResult = ref<any>(null)
 const enableClip = ref(false)
@@ -539,3 +546,4 @@ async function runAnalysis() {
 .mismatch-warn { margin: var(--space-3) 0; padding: var(--space-3); background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.2); border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--color-text-primary); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .mismatch-warn .btn { white-space: nowrap; }
 </style>
+
