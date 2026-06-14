@@ -298,7 +298,7 @@ function handleSite(data: any) {
   const colors = [getComputedStyle(document.documentElement).getPropertyValue('--color-error').trim() || '#FF3B30',
     getComputedStyle(document.documentElement).getPropertyValue('--color-warning').trim() || '#FF9500', '#FF9500',
     getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#007AFF', '#007AFF']
-  addMarkers(data.candidates.map((c, i) => ({ lng: c.lng, lat: c.lat, label: c.name + ' ' + c.score, color: colors[i] || '#007AFF', name: c.name + ' ' + c.score })))
+  addMarkers(data.candidates.map((c: any, i: number) => ({ lng: c.lng, lat: c.lat, label: c.name + ' ' + c.score, color: colors[i] || '#007AFF', name: c.name + ' ' + c.score })))
   fitBounds(data.candidates.map((c: any) => ({ lng: c.lng, lat: c.lat })))
 }
 

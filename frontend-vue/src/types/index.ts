@@ -134,6 +134,7 @@ export interface H3Hexagon {
 }
 
 export interface TaskInfo {
+  code?: string
   taskId: string
   status: "queued" | "running" | "completed" | "failed"
   result?: any

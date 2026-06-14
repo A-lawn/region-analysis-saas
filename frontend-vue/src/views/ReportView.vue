@@ -121,7 +121,7 @@
           <thead><tr><th>排名</th><th>名称</th><th>得分</th><th>竞品500m</th><th>最近距离</th></tr></thead>
           <tbody>
             <tr v-for="(c, i) in siteData.candidates" :key="i">
-              <td>{{ i + 1 }}</td><td>{{ c.name }}</td><td>{{ c.score }}</td>
+              <td>{{ Number(i) + 1 }}</td><td>{{ c.name }}</td><td>{{ c.score }}</td>
               <td>{{ c.dimensions?.competitors500m || '-' }}</td>
               <td>{{ c.dimensions?.minDistanceMeters || '-' }}m</td>
             </tr>
