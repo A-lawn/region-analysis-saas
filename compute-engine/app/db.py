@@ -1,5 +1,4 @@
-"""asyncpg连接池 — 直连PostGIS（不经Express）"""
-import asyncio
+"""asyncpg连接池 -- 直连PostGIS（不经Express）"""
 import asyncpg
 from app.config import settings
 from app.utils.logger import get_logger, get_db_handler
@@ -25,16 +24,16 @@ async def init_db():
         # 验证连接并检查PostGIS
         async with pool.acquire() as conn:
             version = await conn.fetchval("SELECT PostGIS_full_version()")
-            logger.info("PostGIS已连接", extra={"module": "db", "operation": "init", "meta": str(version)[:80]})
+            logger.info("PostGIS connected: %s", str(version)[:80])
 
         # 将连接池注入DB日志处理器
         db_handler = get_db_handler()
         if db_handler:
             db_handler.set_pool(pool)
-            logger.info("DB日志处理器已就绪")
+            logger.info("DB log handler ready")
 
     except Exception as e:
-        logger.error("数据库连接失败", extra={"module": "db", "operation": "init", "meta": str(e)})
+        logger.error("DB connection failed: %s", e)
         raise
 
 
@@ -44,7 +43,7 @@ async def close_db():
     if pool:
         await pool.close()
         pool = None
-        logger.info("数据库连接池已关闭")
+        logger.info("DB pool closed")
 
 
 async def get_db() -> asyncpg.Pool:

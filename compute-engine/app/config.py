@@ -7,20 +7,20 @@ from typing import Optional
 @dataclass
 class Settings:
     # 数据库
-    db_host: str = os.getenv("DB_HOST", "192.168.31.102")
+    db_host: str = os.getenv("DB_HOST", "localhost")
     db_port: int = int(os.getenv("DB_PORT", "5432"))
-    db_name: str = os.getenv("DB_NAME", "postgres")
+    db_name: str = os.getenv("DB_NAME", "region_analysis")
     db_user: str = os.getenv("DB_USER", "postgres")
-    db_password: str = os.getenv("DB_PASSWORD", "Postgres@2026")
+    db_password: str = os.getenv("DB_PASSWORD", "postgres")
     db_pool_min: int = 2
     db_pool_max: int = 10
 
     # Redis
-    redis_host: str = os.getenv("REDIS_HOST", "192.168.31.102")
+    redis_host: str = os.getenv("REDIS_HOST", "localhost")
     redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
 
     # 安全
-    jwt_secret: str = os.getenv("JWT_SECRET", "rfve8sCDymWSGLi23l4Qg6OYXB7UJnx01htczKdPkRwuA5NpEoFTHqaZI9bVjM")
+    jwt_secret: str = os.getenv("JWT_SECRET", "")
     internal_auth_enabled: bool = True
 
     # 计算
