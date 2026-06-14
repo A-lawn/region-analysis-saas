@@ -46,3 +46,5 @@ __pycache__/
 
 # 前端构建产物 — CI构建，不上传
 public/assets/
+
+*.prof

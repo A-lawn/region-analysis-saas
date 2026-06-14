@@ -16,6 +16,20 @@ class GameSolveRequest(BaseModel):
     huff_params: Dict[str, float] = Field(default_factory=dict)
     distance_matrix: Optional[Dict[str, Dict[str, float]]] = None
     iterations: int = Field(default=200, ge=50, le=2000)
+    # P0: pre-filtering control
+    enable_filtering: bool = True
+    site_kpi_values: Optional[Dict[str, Dict[str, float]]] = None
+    # P1: robust solve
+    enable_robust: bool = False
+    robust_runs: int = Field(default=5, ge=2, le=20)
+    standard_errors: Optional[Dict[str, float]] = None
+    # P0: pre-filtering control
+    enable_filtering: bool = True
+    site_kpi_values: Optional[Dict[str, Dict[str, float]]] = None
+    # P1: robust solve
+    enable_robust: bool = False
+    robust_runs: int = Field(default=5, ge=2, le=20)
+    standard_errors: Optional[Dict[str, float]] = None
 
 
 class GameSolveResponse(BaseModel):
@@ -29,6 +43,14 @@ class GameSolveResponse(BaseModel):
     cannibalization_map: Optional[Dict[str, Any]] = None
     pareto_alternatives: List[Dict[str, Any]] = Field(default_factory=list)
     solver_stats: Dict[str, Any] = Field(default_factory=dict)
+    # P0: filter report
+    filter_report: Optional[Dict[str, Any]] = None
+    # P1: robust analysis
+    robust: Optional[Dict[str, Any]] = None
+    # P0: filter report
+    filter_report: Optional[Dict[str, Any]] = None
+    # P1: robust analysis
+    robust: Optional[Dict[str, Any]] = None
 
 
 class ScenarioRequest(BaseModel):

@@ -40,11 +40,11 @@ async def game_solve(req: GameSolveRequest):
     try:
         # 构建站点
         leader_candidates = [
-            StoreInfo(id=s.id, lng=s.lng, lat=s.lat, area=s.area, brand=s.brand)
+            StoreInfo(id=s.id, lng=s.lng, lat=s.lat, area=s.area, brand=s.brand, extras=s.extras)
             for s in req.leader_candidates
         ]
         follower_candidates = [
-            StoreInfo(id=s.id, lng=s.lng, lat=s.lat, area=s.area, brand=s.brand)
+            StoreInfo(id=s.id, lng=s.lng, lat=s.lat, area=s.area, brand=s.brand, extras=s.extras)
             for s in req.follower_candidates
         ]
         demand_points = [
@@ -59,15 +59,56 @@ async def game_solve(req: GameSolveRequest):
             huff_params=req.huff_params,
         )
 
-        solution = solver.solve(
-            leader_p=req.leader_p,
-            follower_q=req.follower_q,
-            iterations=req.iterations,
-        )
+        # P0: Pre-filter candidates based on industry hard constraints
+        filter_report = None
+        if req.enable_filtering and req.industry:
+            filtered_L, filtered_F, filter_report = solver.filter_candidates(
+                req.industry, req.site_kpi_values
+            )
+            solver.L_sites = filtered_L
+            solver.F_sites = filtered_F
+
+            if not filtered_L:
+                return _ok({
+                    "leader_sites": [],
+                    "leader_revenue": 0,
+                    "follower_sites": [],
+                    "follower_revenue": 0,
+                    "cannibalization_pct": 0,
+                    "market_share": {"leader": 0, "follower": 0, "uncovered": 1},
+                    "solver_stats": {"iterations": req.iterations, "compute_time_ms": round((time.time() - t0) * 1000)},
+                    "filter_report": filter_report,
+                })
+
+        # P1: Optional robust solve with parameter uncertainty
+        robust_result = None
+        if req.enable_robust:
+            robust = solver.solve_robust(
+                leader_p=req.leader_p,
+                follower_q=req.follower_q,
+                iterations=req.iterations,
+                n_perturbations=req.robust_runs,
+                standard_errors=req.standard_errors,
+                industry=req.industry if req.enable_filtering else None,
+                site_kpi_values=req.site_kpi_values if req.enable_filtering else None,
+            )
+            solution = robust.base_solution
+            robust_result = {
+                "stability_score": robust.stability_score,
+                "selection_frequencies": robust.selection_frequencies,
+                "sensitivity_warning": robust.sensitivity_warning,
+                "perturbation_runs": robust.perturbation_runs,
+            }
+        else:
+            solution = solver.solve(
+                leader_p=req.leader_p,
+                follower_q=req.follower_q,
+                iterations=req.iterations,
+            )
 
         elapsed = round((time.time() - t0) * 1000)
 
-        return _ok({
+        resp_data = {
             "leader_sites": solution.leader_sites,
             "leader_revenue": solution.leader_revenue,
             "follower_sites": solution.follower_sites,
@@ -78,7 +119,14 @@ async def game_solve(req: GameSolveRequest):
                 "iterations": req.iterations,
                 "compute_time_ms": elapsed,
             },
-        })
+        }
+
+        if filter_report is not None:
+            resp_data["filter_report"] = filter_report
+        if robust_result is not None:
+            resp_data["robust"] = robust_result
+
+        return _ok(resp_data)
 
     except Exception as e:
         logger.exception("博弈求解失败")
@@ -110,6 +158,9 @@ async def game_scenarios(request: Request):
         base_follower_q = body.get("follower_q", 2)
         scenarios = body.get("scenarios", [])
         iterations = body.get("iterations", 200)
+        industry = body.get("industry")
+        enable_filtering = body.get("enable_filtering", False)
+        site_kpi_values = body.get("site_kpi_values")
 
         solver = StackelbergSolver(
             leader_candidates=leader_candidates,
@@ -118,7 +169,19 @@ async def game_scenarios(request: Request):
             huff_params=huff_params,
         )
 
+        # P0: Pre-filter if requested
+        filter_report = None
+        if enable_filtering and industry:
+            filtered_L, filtered_F, filter_report = solver.filter_candidates(
+                industry, site_kpi_values
+            )
+            solver.L_sites = filtered_L
+            solver.F_sites = filtered_F
+
         result = solver.run_scenarios(leader_p, base_follower_q, scenarios, iterations)
+
+        if filter_report is not None:
+            result["filter_report"] = filter_report
 
         elapsed = round((time.time() - t0) * 1000)
         return _ok(result, {"compute_time_ms": elapsed})
@@ -148,10 +211,9 @@ async def game_compare(request: Request):
             DemandInfo(**d) for d in body.get("h3_demand", [])
         ]
         huff_params = body.get("huff_params", {})
+        plan_a = body.get("plan_a_sites", [])
+        plan_b = body.get("plan_b_sites", [])
         follower_q = body.get("follower_q", 2)
-        plan_a_sites = body.get("plan_a_sites", [])
-        plan_b_sites = body.get("plan_b_sites", [])
-        iterations = body.get("iterations", 200)
 
         solver = StackelbergSolver(
             leader_candidates=leader_candidates,
@@ -161,13 +223,8 @@ async def game_compare(request: Request):
         )
 
         results = {}
-        for plan_name, target_sites in [("plan_a", plan_a_sites), ("plan_b", plan_b_sites)]:
-            # 锁定Leader选址，只求解Follower
-            leader_stores = [s for s in leader_candidates if s.id in target_sites]
-            if not leader_stores:
-                results[plan_name] = {"error": "未找到对应候选点"}
-                continue
-
+        for plan_name, plan_sites in [("plan_a", plan_a), ("plan_b", plan_b)]:
+            leader_stores = [s for s in solver.L_sites + solver.F_sites if s.id in plan_sites]
             follower_stores = solver.solve_follower(leader_stores, follower_q)
 
             all_active = leader_stores + follower_stores
