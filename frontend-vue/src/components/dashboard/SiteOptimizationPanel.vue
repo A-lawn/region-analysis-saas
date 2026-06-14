@@ -117,6 +117,8 @@ B,116.420000,39.915000"></textarea>
             <input v-model="c.name" class="point-input" placeholder="点位名称" />
             <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" />
             <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" />
+            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" />
+            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" />
             <button class="point-del" @click="removeLeader(i)" title="删除">×</button>
           </div>
         </div>
@@ -130,6 +132,7 @@ B,116.420000,39.915000"></textarea>
             <span class="point-idx">{{ i + 1 }}</span>
             <span class="point-name">{{ c.name || c.id }}</span>
             <span class="point-coord">{{ c.lng.toFixed(4) }}, {{ c.lat.toFixed(4) }}</span>
+            <span class="point-meta" v-if="c.area !== 100 || c.brand !== 0.5">品牌分 {{ c.brand?.toFixed(1) }} 面积 {{ c.area?.toFixed(0) }}㎡</span>
             <button class="point-del" @click="removeFollower(i)" title="移除">×</button>
           </div>
         </div>
@@ -249,6 +252,8 @@ B,116.420000,39.915000"></textarea>
             <input v-model="c.name" class="point-input" placeholder="点位名称" />
             <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" />
             <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" />
+            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" />
+            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" />
             <button class="point-del" @click="removePlanA(i)" title="删除">×</button>
           </div>
         </div>
@@ -263,6 +268,8 @@ B,116.420000,39.915000"></textarea>
             <input v-model="c.name" class="point-input" placeholder="点位名称" />
             <input v-model.number="c.lng" class="point-input coord" placeholder="经度" step="any" type="number" />
             <input v-model.number="c.lat" class="point-input coord" placeholder="纬度" step="any" type="number" />
+            <input v-model.number="c.area" class="point-input coord sm" placeholder="面积" step="any" type="number" />
+            <input v-model.number="c.brand" class="point-input coord sm" placeholder="品牌分" step="any" type="number" min="0" max="1" />
             <button class="point-del" @click="removePlanB(i)" title="删除">×</button>
           </div>
         </div>
@@ -428,7 +435,7 @@ function handleFollowerClick(pt: { lng: number; lat: number }) {
   const TOL = 200; let best: CandidatePoint | null = null; let minD = Infinity
   for (const p of filteredPoolPoints.value) {
     const d = haversineM(pt.lat, pt.lng, p.lat, p.lng)
-    if (d < TOL && d < minD) { minD = d; best = { id: p.id, lng: p.lng, lat: p.lat, area: 100, brand: 0.5, name: p.name || p.id } }
+    if (d < TOL && d < minD) { minD = d; best = { id: p.id, lng: p.lng, lat: p.lat, area: parseFloat(p.metadata?.floor_area) || 100, brand: parseFloat(p.metadata?.brand_score) || 0.5, name: p.name || p.id } }
   }
   if (best) {
     const idx = gameFollowerCandidates.value.findIndex(c => c.id === best!.id)
@@ -830,6 +837,13 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 }
 .point-input:focus { outline: none; border-color: var(--color-accent); }
 .point-input.coord { max-width: 85px; font-variant-numeric: tabular-nums; }
+.point-input.coord.sm { max-width: 58px; }
+.point-meta {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  padding: 0 4px;
+}
 .point-del {
   width: 22px; height: 22px;
   border: none; border-radius: 50%;

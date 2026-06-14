@@ -27,7 +27,7 @@ export interface HuffParams {
 // ================================================================
 
 const INDUSTRY_DEFAULT_HUFF: Record<string, HuffParams> = {
-  convenience:    { lambda: 3.0, alpha_area: 0.5, alpha_brand: 0.5, source: "default" },
+  convenience:    { lambda: 2.0, alpha_area: 0.5, alpha_brand: 0.8, source: "default" },
   beverage:       { lambda: 2.5, alpha_area: 0.3, alpha_brand: 0.9, source: "default" },
   restaurant:     { lambda: 1.5, alpha_area: 0.8, alpha_brand: 0.7, source: "default" },
   pharmacy:       { lambda: 1.2, alpha_area: 0.4, alpha_brand: 0.6, source: "default" },
