@@ -5,18 +5,18 @@ import { pointToH3 } from "../utils/h3Index";
 
 const pgp = pgPromise();
 
-export interface ExcelRow { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; }
+export interface ExcelRow { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; floor_area?: number; brand_score?: number; tags?: string; }
 export interface UploadResult { projectId: string; rowsParsed: number; rowsInserted: number; errors: string[]; }
 
 export async function processUpload(
   rows: any[][],
-  columnMapping: { nameCol: number | null; addressCol: number | null; lngCol: number; latCol: number; categoryCol?: number | null; revenueCol?: number | null },
+  columnMapping: { nameCol: number | null; addressCol: number | null; lngCol: number; latCol: number; categoryCol?: number | null; revenueCol?: number | null; floorAreaCol?: number | null; brandScoreCol?: number | null; tagsCol?: number | null },
   sourceCrs: CrsType,
   projectName: string,
   tenantId: string = "default"
 ): Promise<UploadResult> {
   const errors: string[] = [];
-  const points: { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number }[] = [];
+  const points: { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; floor_area?: number; brand_score?: number; tags?: string }[] = [];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -30,7 +30,10 @@ export async function processUpload(
     const address = columnMapping.addressCol !== null ? String(row[columnMapping.addressCol] || "").trim() : "";
             const category = columnMapping.categoryCol != null ? String(row[columnMapping.categoryCol] || '').trim() : '';
     const revenue = columnMapping.revenueCol != null ? parseFloat(row[columnMapping.revenueCol]) || 0 : 0;
-    points.push({ name, address, lng: rawLng, lat: rawLat, category, revenue });
+    const floor_area = columnMapping.floorAreaCol != null ? parseFloat(row[columnMapping.floorAreaCol]) || 0 : 0;
+    const brand_score = columnMapping.brandScoreCol != null ? parseFloat(row[columnMapping.brandScoreCol]) || 0 : 0;
+    const tags = columnMapping.tagsCol != null ? String(row[columnMapping.tagsCol] || '').trim() : '';
+    points.push({ name, address, lng: rawLng, lat: rawLat, category, revenue, floor_area, brand_score, tags });
   }
 
   if (points.length === 0) {
@@ -55,8 +58,8 @@ export async function processUpload(
     // 2.3 Batch insert in chunks. Insert lng/lat first, then bulk-update geom+h3.
   const BATCH_SIZE = 2000;
     // Include metadata column if any point has category or revenue
-  const hasCategory = points.some((p: any) => p.category || p.revenue);
-  const columns = hasCategory
+  const hasMetadata = points.some((p: any) => p.category || p.revenue || p.floor_area || p.brand_score || p.tags);
+  const columns = hasMetadata
     ? ["project_id", "name", "address", "lng", "lat", { name: "metadata", mod: ":json" }]
     : ["project_id", "name", "address", "lng", "lat"];
   const cs = new pgp.helpers.ColumnSet(columns, { table: "spatial_points" });
@@ -77,18 +80,34 @@ export async function processUpload(
       lng: c.lng,
       lat: c.lat,
     };
-    if (hasCategory) {
+    if (hasMetadata) {
       const meta: Record<string, any> = {};
       const cat = (p as any).category;
       if (cat) {
-        if (cat.includes("药")) meta.industry = "pharmacy";
+        // Allow direct English industry code OR Chinese keyword detection
+        const KNOWN_INDUSTRIES = ['convenience','beverage','restaurant','pharmacy','fresh_grocery','supermarket','hotel','medical_aesthetics','education','pet_service','auto4s','logistics'];
+        if (KNOWN_INDUSTRIES.includes(cat.toLowerCase())) {
+          meta.industry = cat.toLowerCase();
+        } else if (cat.includes("药")) meta.industry = "pharmacy";
         else if (cat.includes("便利") || cat.includes("零售")) meta.industry = "convenience";
         else if (cat.includes("餐饮") || cat.includes("美食") || cat.includes("火锅")) meta.industry = "restaurant";
         else if (cat.includes("商超") || cat.includes("超市") || cat.includes("百货")) meta.industry = "supermarket";
         else if (cat.includes("汽车") || cat.includes("4S")) meta.industry = "auto4s";
+        else if (cat.includes("饮品") || cat.includes("奶茶") || cat.includes("咖啡")) meta.industry = "beverage";
+        else if (cat.includes("酒店") || cat.includes("住宿")) meta.industry = "hotel";
+        else if (cat.includes("教育") || cat.includes("培训")) meta.industry = "education";
+        else if (cat.includes("宠物")) meta.industry = "pet_service";
+        else if (cat.includes("物流") || cat.includes("快递")) meta.industry = "logistics";
+        else meta.industry = cat; // fallback: use raw value
       }
       const rev = (p as any).revenue;
-      if (rev && rev > 0) meta.dailyRevenue = Math.round(rev);
+      if (rev && rev > 0) meta.daily_revenue = Math.round(rev);
+      const fa = (p as any).floor_area;
+      if (fa && fa > 0) meta.floor_area = fa;
+      const bs = (p as any).brand_score;
+      if (bs && bs > 0) meta.brand_score = bs;
+      const tg = (p as any).tags;
+      if (tg) meta.tags = tg;
       if (Object.keys(meta).length > 0) row.metadata = meta;
     }
     batch.push(row);
