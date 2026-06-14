@@ -103,45 +103,94 @@ export async function getHuffParams(
       );
 
       if (points && points.length >= 5) {
-        // 构建Huff拟合请求
-        const observations = points.map((p: any) => ({
-          demand_id: `h3_${Math.round(parseFloat(p.lat) * 100)}_${Math.round(parseFloat(p.lng) * 100)}`,
-          store_id: String(p.id),
-          weight: parseFloat(p.daily_revenue),
-          distance_m: 0,
-        }));
-
+        // 构建Huff拟合请求 — 使用距离矩阵 + 收入加权
+        // 每个点位同时作为demand和store，距离使用Haversine公式计算
         const storeAttrs: Record<string, Record<string, number>> = {};
+        const storeIds: string[] = [];
+        const storeCoords: { lng: number; lat: number; revenue: number }[] = [];
+
         for (const p of points) {
-          storeAttrs[String(p.id)] = {
+          const sid = String(p.id);
+          storeIds.push(sid);
+          storeAttrs[sid] = {
             area: parseFloat(p.floor_area) || 100,
             brand: parseFloat(p.brand_score) || 0.5,
           };
+          storeCoords.push({
+            lng: parseFloat(p.lng),
+            lat: parseFloat(p.lat),
+            revenue: parseFloat(p.daily_revenue) || 0,
+          });
         }
 
-        const result = await fitHuffModel({
-          project_id: projectId,
-          store_attributes: storeAttrs,
-          demand_points: observations.map((o: any) => o.demand_id),
-          observations,
-        });
+        // Haversine distance (meters)
+        const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+          const R = 6371000;
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLng = (lng2 - lng1) * Math.PI / 180;
+          const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+          return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        };
 
-        if (result.success && result.data) {
-          const fitted = result.data;
-          const params: HuffParams = {
-            lambda: Math.abs(fitted.fitted_params.dist || 2.0),
-            alpha_area: fitted.fitted_params.area || 1.0,
-            alpha_brand: fitted.fitted_params.brand || 0.8,
-            r_squared: fitted.r_squared,
-            aic: fitted.aic,
-            n_observations: fitted.n_observations,
-            source: "mle",
-          };
+        // Build pairwise observations: for each store (demand_i), observe revenue at all nearby stores (store_j)
+        // Within 2000m radius, weight = store_j.revenue; beyond that skip (too far to compete)
+        const observations: { demand_id: string; store_id: string; weight: number; distance_m: number }[] = [];
+        const demandIds: string[] = [];
+        const MAX_DIST = 2000; // meters — only consider competition within 2km
 
-          // 缓存到DB
-          await cacheHuffParams(projectId, params, fitted.r_squared, fitted.aic, fitted.n_observations);
+        for (let i = 0; i < storeIds.length; i++) {
+          const did = storeIds[i]; // demand point = this store's location
+          demandIds.push(did);
+          const src = storeCoords[i];
+          
+          for (let j = 0; j < storeIds.length; j++) {
+            const sid = storeIds[j];
+            const tgt = storeCoords[j];
+            const dist = haversineM(src.lat, src.lng, tgt.lat, tgt.lng);
+            
+            if (dist <= MAX_DIST) {
+              // Weight: target store's revenue, with self-weight capped at 1.0 (log-distance effect)
+              // Self-observation: use a minimum distance of 50m to avoid log(0) issues
+              const w = i === j ? src.revenue : tgt.revenue * Math.exp(-dist / 500);
+              const d = Math.max(dist, 50.0);
+              observations.push({ demand_id: did, store_id: sid, weight: w, distance_m: d });
+            }
+          }
+        }
 
-          return params;
+        logger.info({ projectId, n_stores: storeIds.length, n_obs: observations.length },
+          "[Huff] 构建观测数据完成");
+
+        // Guard: skip if effectively no variance (all stores at same location)
+        const uniqueLocs = new Set(storeCoords.map(c => `${c.lng.toFixed(5)},${c.lat.toFixed(5)}`));
+        if (uniqueLocs.size < 3) {
+          logger.warn({ projectId, uniqueLocs: uniqueLocs.size },
+            "[Huff] 唯一点位<3，距离模型不可拟合，降级到默认参数");
+        } else {
+          const result = await fitHuffModel({
+            project_id: projectId,
+            store_attributes: storeAttrs,
+            demand_points: demandIds,
+            observations,
+          });
+
+          if (result.success && result.data) {
+            const fitted = result.data;
+            const params: HuffParams = {
+              lambda: Math.abs(fitted.fitted_params.dist || 2.0),
+              alpha_area: fitted.fitted_params.area || 1.0,
+              alpha_brand: fitted.fitted_params.brand || 0.8,
+              r_squared: fitted.r_squared,
+              aic: fitted.aic,
+              n_observations: fitted.n_observations,
+              source: "mle",
+            };
+
+            // 缓存到DB
+            await cacheHuffParams(projectId, params, fitted.r_squared, fitted.aic, fitted.n_observations);
+
+            return params;
+          }
         }
       }
     }
