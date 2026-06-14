@@ -413,7 +413,7 @@ watch(() => props.clickedCandidate, (pt) => {
 })
 
 function handleFollowerClick(pt: { lng: number; lat: number }) {
-  const TOL = 80; let best: CandidatePoint | null = null; let minD = Infinity
+  const TOL = 200; let best: CandidatePoint | null = null; let minD = Infinity
   for (const p of filteredPoolPoints.value) {
     const d = haversineM(pt.lat, pt.lng, p.lat, p.lng)
     if (d < TOL && d < minD) { minD = d; best = { id: p.id, lng: p.lng, lat: p.lat, area: 100, brand: 0.5, name: p.name || p.id } }
@@ -422,6 +422,10 @@ function handleFollowerClick(pt: { lng: number; lat: number }) {
     const idx = gameFollowerCandidates.value.findIndex(c => c.id === best!.id)
     if (idx >= 0) gameFollowerCandidates.value.splice(idx, 1)
     else gameFollowerCandidates.value.push(best)
+  } else {
+    // No pool point nearby -- show feedback
+    task.value = { taskId: '', status: 'failed', error: `未找到附近候选点 (最近距离: ${minD.toFixed(0)}m). 请点击地图上的灰色待选点. 当前候选池: ${filteredPoolPoints.value.length}个` }
+    setTimeout(() => { if (task.value?.status === 'failed') task.value = null }, 3000)
   }
 }
 
@@ -435,7 +439,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 function emitMarkers() {
   const groups: { groupId: string; points: { lng: number; lat: number; name?: string; label?: string; color?: string }[] }[] = []
 
-  if (mode.value === 'game') {
+  if (mode.value === 'game' || mode.value === 'compare') {
     groups.push({ groupId: 'pool', points: filteredPoolPoints.value.map(p => ({ lng: p.lng, lat: p.lat, name: p.name||p.id, color: '#999999' })) })
   }
   if (gameLeaderCandidates.value.length) {
@@ -458,7 +462,7 @@ function emitMarkers() {
   emit('markersUpdate', groups)
 }
 
-watch([gameLeaderCandidates, gameFollowerCandidates, filteredPoolPoints, planACandidates, planBCandidates, candidatesText, mode], () => emitMarkers(), { deep: true })
+watch([gameLeaderCandidates, gameFollowerCandidates, filteredPoolPoints, planACandidates, planBCandidates, candidatesText, mode], () => emitMarkers(), { deep: true, immediate: true })
 
 // ── Scorecard ──
 function parseCandidatesText(): { name: string; lng: number; lat: number }[] {
@@ -486,7 +490,11 @@ const huffSourceLabel = computed(() => {
 })
 
 async function loadHuffParams() { huffLoading.value = true; try { huffParams.value = await getHuffParams(props.projectId, industry.value||undefined) } catch {} finally { huffLoading.value = false } }
-onMounted(() => { loadHuffParams() })
+onMounted(() => {
+  loadHuffParams()
+  // Emit pool markers on tab activation
+  nextTick(() => emitMarkers())
+})
 
 function onIndustryChange() {
   if (!industry.value) return
