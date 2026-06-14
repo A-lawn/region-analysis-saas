@@ -9,7 +9,7 @@ from app.models.site_optimization import (
     GameSolveRequest, ScenarioRequest, CompareRequest, HuffFitRequest,
 )
 from app.services.game_theory import StackelbergSolver, StoreInfo, DemandInfo
-from app.services.huff import HuffMLE
+from app.services.huff import HuffMLE, HuffRevenueMLE
 from app.services.data_loader import load_project_points, load_huff_observations
 from app.utils.logger import get_logger
 import math
@@ -323,6 +323,61 @@ async def huff_fit(req: HuffFitRequest):
     except Exception as e:
         logger.exception("Huff拟合失败")
         return JSONResponse(_err("HUFF_ERROR", str(e)), status_code=500)
+
+
+# ================================================================
+# POST /model/huff-fit-v2 — 基于门店营收+H3网格反向拟合
+# ================================================================
+
+@router.post("/model/huff-fit-v2")
+async def huff_fit_v2(request: Request):
+    t0 = time.time()
+    body = await request.json()
+
+    stores = body.get("stores", [])
+    industry = body.get("industry", "convenience")
+
+    # 行业辐射半径
+    radius_map = {
+        "convenience": 300, "beverage": 400, "restaurant": 500,
+        "pharmacy": 800, "fresh_grocery": 800, "supermarket": 3000,
+        "hotel": 2000, "medical_aesthetics": 3000, "education": 1500,
+        "pet_service": 2000, "auto4s": 10000, "logistics": 500,
+    }
+    radius = body.get("radius_m", radius_map.get(industry, 500))
+
+    if len(stores) < 5:
+        return JSONResponse(
+            _err("TOO_FEW_STORES", f"至少需要5家门店，当前{len(stores)}家"),
+            status_code=400,
+        )
+
+    try:
+        mle = HuffRevenueMLE(stores=stores, industry_radius_m=radius)
+        result = mle.fit()
+
+        elapsed = round((time.time() - t0) * 1000)
+
+        def _safe(v):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                return None
+            return v
+
+        return _ok({
+            "fitted_params": {k: _safe(v) for k,v in result.fitted_params.items()},
+            "r_squared": _safe(result.r_squared),
+            "aic": _safe(result.aic),
+            "convergence": result.convergence,
+            "predicted_revenues": {k: _safe(v) for k,v in result.predicted_revenues.items()},
+            "actual_revenues": {k: _safe(v) for k,v in result.actual_revenues.items()},
+            "n_grid_cells": result.n_grid_cells,
+            "n_stores": result.n_stores,
+            "note": "基于门店营收+H3网格+行业半径反向拟合Huff参数",
+        }, {"compute_time_ms": elapsed})
+
+    except Exception as e:
+        logger.exception("HuffRevenueMLE拟合失败")
+        return JSONResponse(_err("HUFF_V2_ERROR", str(e)), status_code=500)
 
 
 # ================================================================

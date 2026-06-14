@@ -182,6 +182,28 @@ export async function prepareGameData(projectId: string, industry?: string) {
 /**
  * 健康检查 — 验证Python引擎是否可达
  */
+export interface HuffFitV2Request {
+  project_id: string;
+  industry?: string;
+  stores: { id: string; lng: number; lat: number; daily_revenue: number; area: number; brand: number }[];
+  radius_m?: number;
+}
+
+export interface HuffFitV2Response {
+  fitted_params: { lambda: number; alpha_area: number; alpha_brand: number };
+  r_squared: number;
+  aic: number;
+  convergence: boolean;
+  predicted_revenues: Record<string, number>;
+  actual_revenues: Record<string, number>;
+  n_grid_cells: number;
+  n_stores: number;
+}
+
+export async function fitHuffModelV2(body: HuffFitV2Request) {
+  return computeRequest<HuffFitV2Response>("/model/huff-fit-v2", body as any);
+}
+
 export async function checkEngineHealth(): Promise<boolean> {
   try {
     const controller = new AbortController();

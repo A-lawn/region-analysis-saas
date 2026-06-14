@@ -139,3 +139,174 @@ class HuffMLE:
         if total>0:
             for sid in shares: shares[sid]/=total
         return shares
+
+
+# ═══════════════════════════════════════════════════════════════
+# HuffRevenueMLE — 基于门店营收的反推拟合
+# 核心思路：门店周围生成H3网格 → 每个网格的消费力按Huff概率
+# 分配给周围门店 → 预测营收 ≈ 实际营收 → minimize误差
+# ═══════════════════════════════════════════════════════════════
+
+@dataclass
+class RevenueFitResult:
+    fitted_params: Dict[str, float]
+    r_squared: float
+    aic: float
+    convergence: bool
+    predicted_revenues: Dict[str, float]
+    actual_revenues: Dict[str, float]
+    n_grid_cells: int
+    n_stores: int
+
+
+class HuffRevenueMLE:
+    """用门店营收 + 周边H3网格反向拟合Huff参数"""
+
+    def __init__(self, stores: List[Dict], industry_radius_m: float = 500):
+        """
+        stores: [{id, lng, lat, daily_revenue, area, brand}, ...]
+        industry_radius_m: 行业辐射半径，如便利店300m、餐饮500m
+        """
+        self.stores = stores
+        self.radius_m = industry_radius_m
+        self.store_ids = [s["id"] for s in stores]
+
+        # 实际营收向量
+        self.revenue_actual = np.array([max(s.get("daily_revenue", 0), 1.0) for s in stores])
+        self.total_revenue = float(np.sum(self.revenue_actual))
+
+        # 门店属性
+        self.areas = np.array([s.get("area", 100.0) for s in stores])
+        self.brands = np.array([s.get("brand", 0.5) for s in stores])
+
+        # 为每家门店生成周边H3网格
+        self._build_grid()
+
+        logger.info("HuffRevenueMLE: stores=%d grid_cells=%d radius=%dm",
+                     len(stores), len(self.grid_cells), industry_radius_m)
+
+    def _build_grid(self):
+        """在每家门店周围radius内生成H3网格采样点"""
+        from app.utils.h3_helpers import latlng_to_h3, h3_to_latlng
+
+        self.grid_cells = []
+        seen = set()
+
+        for store in self.stores:
+            slng, slat = store["lng"], store["lat"]
+            # 在半径内生成网格，步长约100m
+            step = 0.001  # ~100m
+            steps = int(self.radius_m / 100) + 1
+
+            for dx in range(-steps, steps + 1):
+                for dy in range(-steps, steps + 1):
+                    lat = slat + dy * step
+                    lng = slng + dx * step
+                    # 粗略距离检查
+                    dist = self._haversine(slat, slng, lat, lng)
+                    if dist <= self.radius_m:
+                        try:
+                            h3 = latlng_to_h3(lat, lng, 9)
+                            if h3 not in seen:
+                                seen.add(h3)
+                                lat_c, lng_c = h3_to_latlng(h3)
+                                self.grid_cells.append({"h3": h3, "lng": lng_c, "lat": lat_c})
+                        except Exception:
+                            pass
+
+        if len(self.grid_cells) > 2000:
+            import random
+            random.shuffle(self.grid_cells)
+            self.grid_cells = self.grid_cells[:2000]
+
+        # 每个网格默认等权（消费力=总营收/网格数 × 基数调整）
+        base_consumption = max(self.total_revenue / max(len(self.grid_cells), 1), 10.0)
+        self.grid_weights = np.array([base_consumption] * len(self.grid_cells))
+
+        # 距离矩阵: stores × grids
+        self.dist_matrix = np.zeros((len(self.grid_cells), len(self.stores)))
+        for gi, gc in enumerate(self.grid_cells):
+            for si, store in enumerate(self.stores):
+                d = self._haversine(gc["lat"], gc["lng"], store["lat"], store["lng"])
+                self.dist_matrix[gi, si] = max(d, 10.0)  # 最小10m
+
+    @staticmethod
+    def _haversine(lat1, lng1, lat2, lng2):
+        R = 6371000
+        dlat = np.radians(lat2 - lat1)
+        dlng = np.radians(lng2 - lng1)
+        a = np.sin(dlat / 2) ** 2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlng / 2) ** 2
+        return R * 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+    def _huff_probs(self, params):
+        """返回每个网格→每家门店的概率矩阵"""
+        lmd = abs(params[0])  # λ (距离衰减)
+        aa = abs(params[1])   # α_area
+        ab = abs(params[2])   # α_brand
+
+        # 吸引力矩阵: grids × stores
+        A = (self.areas ** aa) * (self.brands ** ab) * np.exp(-lmd * self.dist_matrix / 1000.0)
+        A = np.nan_to_num(A, nan=0.0, posinf=1e10, neginf=0.0)
+
+        # 行归一化为概率
+        row_sum = A.sum(axis=1, keepdims=True)
+        row_sum = np.where(row_sum < 1e-10, 1.0, row_sum)
+        return A / row_sum
+
+    def _predict_revenue(self, params):
+        """预测每家门店营收 = Σ grid_weight × P(grid→store)"""
+        probs = self._huff_probs(params)
+        grid_w = self.grid_weights.reshape(-1, 1)
+        return (probs * grid_w).sum(axis=0)
+
+    def _loss(self, params):
+        """均方对数误差 (惩罚比例偏差)"""
+        pred = self._predict_revenue(params)
+        pred = np.maximum(pred, 1.0)
+        actual = self.revenue_actual
+        log_err = np.log(pred / actual)
+        mse = np.mean(log_err ** 2)
+        # 轻L2正则化防止参数爆炸
+        reg = 0.001 * (params[0] ** 2 + params[1] ** 2 + params[2] ** 2)
+        return mse + reg
+
+    def fit(self, initial=None):
+        if initial is None:
+            initial = [2.0, 0.5, 0.5]
+
+        bounds = [(0.01, 20.0), (0.0, 5.0), (0.0, 5.0)]
+
+        result = minimize(
+            self._loss, initial, method="L-BFGS-B",
+            bounds=bounds, options={"maxiter": 300, "ftol": 1e-8}
+        )
+
+        params = result.x
+        pred = self._predict_revenue(params)
+
+        # R²
+        ss_res = np.sum((pred - self.revenue_actual) ** 2)
+        ss_tot = np.sum((self.revenue_actual - np.mean(self.revenue_actual)) ** 2)
+        r2 = max(0.0, min(1.0, 1 - ss_res / max(ss_tot, 1e-10)))
+
+        # AIC
+        n = len(self.stores)
+        ll = -0.5 * n * np.log(max(ss_res / n, 1e-10))
+        aic = 2 * 3 - 2 * ll
+
+        converged = bool(result.success)
+
+        return RevenueFitResult(
+            fitted_params={
+                "lambda": round(float(abs(params[0])), 4),
+                "alpha_area": round(float(abs(params[1])), 4),
+                "alpha_brand": round(float(abs(params[2])), 4),
+            },
+            r_squared=round(float(r2), 4),
+            aic=round(float(aic), 2),
+            convergence=converged,
+            predicted_revenues={s["id"]: round(float(pred[i]), 0) for i, s in enumerate(self.stores)},
+            actual_revenues={s["id"]: float(s.get("daily_revenue", 0)) for s in self.stores},
+            n_grid_cells=len(self.grid_cells),
+            n_stores=len(self.stores),
+        )

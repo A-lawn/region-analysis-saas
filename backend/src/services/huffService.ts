@@ -8,7 +8,7 @@
  * 4. 返回行业默认值
  */
 import db from "../db";
-import { fitHuffModel } from "./computeClient";
+import { fitHuffModel, fitHuffModelV2 } from "./computeClient";
 import { loadIndustryConfig } from "./analysis/industryLoader";
 import logger from "../utils/logger";
 
@@ -77,7 +77,7 @@ export async function getHuffParams(
     logger.warn({ projectId, error: err.message }, "[Huff] DB缓存读取失败");
   }
 
-  // 2. 检查是否有交易数据 → MLE拟合
+  // 2. 基于门店营收+H3网格 MLE拟合 V2
   try {
     const hasRevenue = await db.oneOrNone(
       `SELECT COUNT(*)::INTEGER AS cnt
@@ -88,9 +88,8 @@ export async function getHuffParams(
       { projectId }
     );
 
-    // MLE disabled by default — enable with ENABLE_HUFF_MLE=true
-    if (process.env.ENABLE_HUFF_MLE === 'true' && hasRevenue?.cnt >= 5) {
-      // 构建观测数据
+    if (process.env.ENABLE_HUFF_MLE !== 'false' && hasRevenue?.cnt >= 5) {
+      // 读出门店完整属性
       const points = await db.manyOrNone(
         `SELECT id, ST_X(geom)::numeric AS lng, ST_Y(geom)::numeric AS lat,
                 COALESCE(metadata->>'daily_revenue', '0')::numeric AS daily_revenue,
@@ -104,107 +103,66 @@ export async function getHuffParams(
       );
 
       if (points && points.length >= 5) {
-        // 构建Huff拟合请求 — 使用距离矩阵 + 收入加权
-        // 每个点位同时作为demand和store，距离使用Haversine公式计算
-        const storeAttrs: Record<string, Record<string, number>> = {};
-        const storeIds: string[] = [];
-        const storeCoords: { lng: number; lat: number; revenue: number }[] = [];
+        const stores = points.map((p: any) => ({
+          id: String(p.id),
+          lng: parseFloat(p.lng),
+          lat: parseFloat(p.lat),
+          daily_revenue: parseFloat(p.daily_revenue) || 0,
+          area: parseFloat(p.floor_area) || 100,
+          brand: parseFloat(p.brand_score) || 0.5,
+        }));
 
-        for (const p of points) {
-          const sid = String(p.id);
-          storeIds.push(sid);
-          storeAttrs[sid] = {
-            area: parseFloat(p.floor_area) || 100,
-            brand: parseFloat(p.brand_score) || 0.5,
+        // 从行业配置获取辐射半径
+        let radius_m: number | undefined;
+        try {
+          const indCfg = await loadIndustryConfig(industry || "convenience");
+          radius_m = indCfg?.radiusMeters;
+        } catch {}
+        if (!radius_m) {
+          const DEFAULT_RADII: Record<string, number> = {
+            convenience: 300, beverage: 400, restaurant: 500,
+            pharmacy: 800, fresh_grocery: 800, supermarket: 3000,
+            hotel: 2000, medical_aesthetics: 3000, education: 1500,
+            pet_service: 2000, auto4s: 10000, logistics: 500,
           };
-          storeCoords.push({
-            lng: parseFloat(p.lng),
-            lat: parseFloat(p.lat),
-            revenue: parseFloat(p.daily_revenue) || 0,
-          });
+          radius_m = DEFAULT_RADII[industry || "convenience"] || 500;
         }
 
-        // Haversine distance (meters)
-        const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
-          const R = 6371000;
-          const dLat = (lat2 - lat1) * Math.PI / 180;
-          const dLng = (lng2 - lng1) * Math.PI / 180;
-          const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
-          return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        };
+        logger.info({ projectId, n_stores: stores.length, radius_m },
+          "[HuffV2] 开始营收反推拟合");
 
-        // Build pairwise observations: for each store (demand_i), observe revenue at all nearby stores (store_j)
-        // Within 2000m radius, weight = store_j.revenue; beyond that skip (too far to compete)
-        const observations: { demand_id: string; store_id: string; weight: number; distance_m: number }[] = [];
-        const demandIds: string[] = [];
-        const MAX_DIST = 2000; // meters — only consider competition within 2km
+        const result = await fitHuffModelV2({
+          project_id: projectId,
+          industry: industry || "convenience",
+          stores,
+          radius_m,
+        });
 
-        for (let i = 0; i < storeIds.length; i++) {
-          const did = storeIds[i]; // demand point = this store's location
-          demandIds.push(did);
-          const src = storeCoords[i];
-          
-          for (let j = 0; j < storeIds.length; j++) {
-            const sid = storeIds[j];
-            const tgt = storeCoords[j];
-            const dist = haversineM(src.lat, src.lng, tgt.lat, tgt.lng);
-            
-            if (dist <= MAX_DIST) {
-              // Weight: target store's revenue, with self-weight capped at 1.0 (log-distance effect)
-              // Self-observation: use a minimum distance of 50m to avoid log(0) issues
-              const w = i === j ? src.revenue : tgt.revenue * Math.exp(-dist / 500);
-              const d = Math.max(dist, 50.0);
-              observations.push({ demand_id: did, store_id: sid, weight: w, distance_m: d });
-            }
-          }
-        }
+        if (result.success && result.data) {
+          const fitted = result.data;
+          const params: HuffParams = {
+            lambda: fitted.fitted_params.lambda,
+            alpha_area: fitted.fitted_params.alpha_area,
+            alpha_brand: fitted.fitted_params.alpha_brand,
+            r_squared: fitted.r_squared,
+            aic: fitted.aic,
+            n_observations: fitted.n_stores,
+            source: "mle",
+          };
 
-        logger.info({ projectId, n_stores: storeIds.length, n_obs: observations.length },
-          "[Huff] 构建观测数据完成");
-
-        // Guard: skip if effectively no variance (all stores at same location)
-        const uniqueLocs = new Set(storeCoords.map(c => `${c.lng.toFixed(5)},${c.lat.toFixed(5)}`));
-        if (uniqueLocs.size < 3) {
-          logger.warn({ projectId, uniqueLocs: uniqueLocs.size },
-            "[Huff] 唯一点位<3，距离模型不可拟合，降级到默认参数");
+          await cacheHuffParams(projectId, params, fitted.r_squared, fitted.aic, fitted.n_stores);
+          return params;
         } else {
-          const result = await fitHuffModel({
-            project_id: projectId,
-            store_attributes: storeAttrs,
-            demand_points: demandIds,
-            observations,
-          });
-
-          if (!result.success) {
-            logger.warn({ projectId, error: result.error, n_stores: storeIds.length, n_obs: observations.length },
-              "[Huff] Python引擎MLE返回失败");
-          }
-
-          if (result.success && result.data) {
-            const fitted = result.data;
-            const params: HuffParams = {
-              lambda: Math.abs(fitted.fitted_params.dist || 2.0),
-              alpha_area: fitted.fitted_params.area || 1.0,
-              alpha_brand: fitted.fitted_params.brand || 0.8,
-              r_squared: fitted.r_squared,
-              aic: fitted.aic,
-              n_observations: fitted.n_observations,
-              source: "mle",
-            };
-
-            // 缓存到DB
-            await cacheHuffParams(projectId, params, fitted.r_squared, fitted.aic, fitted.n_observations);
-
-            return params;
-          }
+          logger.warn({ projectId, error: result.error },
+            "[HuffV2] 拟合失败，降级");
         }
       }
     }
   } catch (err: any) {
-    logger.warn({ projectId, error: err.message }, "[Huff] MLE拟合失败，降级到基准参数");
+    logger.warn({ projectId, error: err.message }, "[HuffV2] MLE拟合异常，降级到基准参数");
   }
 
-  // 3. 查行业 benchmark
+  // 3. 查行业 benchmark  // 3. 查行业 benchmark
   if (industry) {
     try {
       const bench = await db.oneOrNone(
