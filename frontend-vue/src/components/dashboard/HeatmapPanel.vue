@@ -92,7 +92,7 @@ async function runAnalysis() {
 .mode-tabs { display: flex; gap: 2px; background: var(--color-bg-input); border-radius: var(--radius-sm); padding: 2px; }
 .mode-tab {
   flex: 1; padding: 6px 0; border: none; background: transparent;
-  border-radius: 6px; font-size: 12px; font-weight: 500;
+  border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--font-medium);
   color: var(--color-text-secondary); cursor: pointer; transition: all 0.15s;
 }
 .mode-tab.active { background: var(--color-bg-card-solid); color: var(--color-accent); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }

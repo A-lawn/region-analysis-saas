@@ -280,7 +280,7 @@ function handleCluster(data: ClusterResult) {
   const AMap = (window as any).AMap
   data.clusters.forEach((c: any) => {
     const r = Math.min(c.pointCount * 2 + 10, 50)
-    const html = '<div style="width:' + (r * 2) + 'px;height:' + (r * 2) + 'px;border-radius:50%;background:rgba(0,122,255,0.3);border:2px solid #007AFF;display:flex;align-items:center;justify-content:center;color:#007AFF;font-size:11px;font-weight:bold;pointer-events:none">' + c.pointCount + '</div>'
+    const html = '<div style="width:' + (r * 2) + 'px;height:' + (r * 2) + 'px;border-radius:50%;background:rgba(0,122,255,0.3);border:2px solid #007AFF;display:flex;align-items:center;justify-content:center;color:#007AFF;font-size: 11px; /* Apple HIG caption */font-weight:bold;pointer-events:none">' + c.pointCount + '</div>'
     const marker = new AMap.Marker({
       position: [c.center.lng, c.center.lat],
       content: html,

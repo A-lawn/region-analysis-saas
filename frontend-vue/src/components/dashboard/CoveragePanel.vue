@@ -90,7 +90,7 @@
           <input type="radio" v-model="networkMode" value="bus+subway" />
           公交+地铁
         </label>
-        <span class="param-hint" style="font-size: 11px; color: #94a3b8; margin-left: auto;">🚇 高德公交API</span>
+        <span class="param-hint" style="color: var(--color-text-tertiary); margin-left: auto;">🚇 高德公交API</span>
       </div>
     </div>
     <TaskProgress v-if="task" :task="task" />
@@ -178,15 +178,15 @@
           <div class="section-divider">L2 · 门店效率</div>
           <div class="result-stat">
             <span class="stat-label">独家覆盖</span>
-            <span class="stat-value" style="color: #34C759">{{ ((result.overlapLayers.single || 0) / 1000000).toFixed(2) }} km²</span>
+            <span class="stat-value" style="color: var(--color-success)">{{ ((result.overlapLayers.single || 0) / 1000000).toFixed(2) }} km²</span>
           </div>
           <div class="result-stat">
             <span class="stat-label">双重覆盖</span>
-            <span class="stat-value" style="color: #FF9500">{{ ((result.overlapLayers.double || 0) / 1000000).toFixed(2) }} km²</span>
+            <span class="stat-value" style="color: var(--color-warning)">{{ ((result.overlapLayers.double || 0) / 1000000).toFixed(2) }} km²</span>
           </div>
           <div class="result-stat">
             <span class="stat-label">三重及以上</span>
-            <span class="stat-value" style="color: #FF3B30">{{ ((result.overlapLayers.triplePlus || 0) / 1000000).toFixed(2) }} km²</span>
+            <span class="stat-value" style="color: var(--color-error)">{{ ((result.overlapLayers.triplePlus || 0) / 1000000).toFixed(2) }} km²</span>
           </div>
           <div :class="['map-hint', { 'map-hint-warn': (result.cannibalizationIndex || 0) > 50 }]">
             蚕食指数 {{ result.cannibalizationIndex || 0 }}%<template v-if="(result.cannibalizationIndex || 0) > 50"> —— 建议优化门店间距以减少互相竞争</template><template v-else> —— 你的门店互相抢占了 {{ result.cannibalizationIndex || 0 }}% 的服务区域</template>
@@ -509,18 +509,18 @@ async function runAnalysis() {
 .result-stat { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); }
 .stat-label { font-size: var(--text-sm); color: var(--color-text-secondary); }
 .stat-value { font-weight: var(--font-semibold); color: var(--color-accent); font-variant-numeric: tabular-nums; }
-.stat-value-warn { color: #FF3B30 !important; }
-.stat-value-mid { color: #FF9500 !important; }
-.stat-value-good { color: #34C759 !important; }
+.stat-value-warn { color: var(--color-error) !important; }
+.stat-value-mid { color: var(--color-warning) !important; }
+.stat-value-good { color: var(--color-success) !important; }
 .section-divider { padding: var(--space-3) 0 var(--space-1); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-1); }
 .weight-hint { font-size: var(--text-xs); color: var(--color-text-tertiary); font-weight: var(--font-normal); margin-left: var(--space-1); }
 .advice-card { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin-top: var(--space-2); background: var(--color-bg-card-solid); border-radius: var(--radius-sm); border-left: 3px solid var(--color-border); }
-.advice-high { border-left-color: #FF3B30; }
-.advice-medium { border-left-color: #FF9500; }
+.advice-high { border-left-color: var(--color-error); }
+.advice-medium { border-left-color: var(--color-warning); }
 .advice-low { border-left-color: var(--color-text-tertiary); }
 .advice-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
-.dot-high { background: #FF3B30; }
-.dot-medium { background: #FF9500; }
+.dot-high { background: var(--color-error); }
+.dot-medium { background: var(--color-warning); }
 .dot-low { background: var(--color-text-tertiary); }
 .advice-text { font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.4; }
 .map-hint-warn { background: rgba(255, 59, 48, 0.08) !important; border-color: rgba(255, 59, 48, 0.2) !important; }
