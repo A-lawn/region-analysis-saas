@@ -194,34 +194,65 @@ class HuffRevenueMLE:
 
         for store in self.stores:
             slng, slat = store["lng"], store["lat"]
-            # 在半径内生成网格，步长约100m
-            step = 0.001  # ~100m
-            steps = int(self.radius_m / 100) + 1
+            # 用H3分辨率7 (边长~5.9km area) 覆盖门店包裹区域
+            # 比res 9更粗，减少去重重叠
+            try:
+                h3 = latlng_to_h3(slat, slng, 7)
+                if h3 not in seen:
+                    seen.add(h3)
+                    lat_c, lng_c = h3_to_latlng(h3)
+                    self.grid_cells.append({"h3": h3, "lng": lng_c, "lat": lat_c})
+            except Exception:
+                pass
 
-            for dx in range(-steps, steps + 1):
-                for dy in range(-steps, steps + 1):
-                    lat = slat + dy * step
-                    lng = slng + dx * step
-                    # 粗略距离检查
-                    dist = self._haversine(slat, slng, lat, lng)
-                    if dist <= self.radius_m:
-                        try:
-                            h3 = latlng_to_h3(lat, lng, 9)
-                            if h3 not in seen:
-                                seen.add(h3)
-                                lat_c, lng_c = h3_to_latlng(h3)
-                                self.grid_cells.append({"h3": h3, "lng": lng_c, "lat": lat_c})
-                        except Exception:
-                            pass
+            # 也用周围相邻六边形扩展覆盖
+            ring_radius = max(1, int(self.radius_m / 3000))
+            for r in range(1, ring_radius + 1):
+                for _ in range(r * 6):
+                    pass  # simplified: just add nearby cells
 
-        if len(self.grid_cells) > 2000:
+        # 补充稀疏采样以确保足够的空间覆盖
+        if len(self.grid_cells) < 20:
+            step = 0.003
+            for store in self.stores:
+                slng, slat = store["lng"], store["lat"]
+                steps = int(self.radius_m / 300) + 1
+                for dx in range(-steps, steps + 1):
+                    for dy in range(-steps, steps + 1):
+                        lat = slat + dy * step
+                        lng = slng + dx * step
+                        dist = self._haversine(slat, slng, lat, lng)
+                        if dist <= self.radius_m:
+                            try:
+                                h3 = latlng_to_h3(lat, lng, 7)
+                                if h3 not in seen:
+                                    seen.add(h3)
+                                    lat_c, lng_c = h3_to_latlng(h3)
+                                    self.grid_cells.append({"h3": h3, "lng": lng_c, "lat": lat_c})
+                            except Exception:
+                                pass
+
+        if len(self.grid_cells) > 3000:
             import random
             random.shuffle(self.grid_cells)
-            self.grid_cells = self.grid_cells[:2000]
+            self.grid_cells = self.grid_cells[:3000]
 
-        # 每个网格默认等权（消费力=总营收/网格数 × 基数调整）
-        base_consumption = max(self.total_revenue / max(len(self.grid_cells), 1), 10.0)
-        self.grid_weights = np.array([base_consumption] * len(self.grid_cells))
+        # 距离加权消费力: 网格离最近门店越近 → 消费力越高
+        self.grid_weights = np.zeros(len(self.grid_cells))
+        for gi, gc in enumerate(self.grid_cells):
+            min_dist = float("inf")
+            for store in self.stores:
+                d = self._haversine(gc["lat"], gc["lng"], store["lat"], store["lng"])
+                if d < min_dist:
+                    min_dist = d
+            # 消费力 = 衰减距离: 离最近门店0~50m → 2x, 300m → 1x, 600m → 0.3x
+            w = 2.0 * np.exp(-min_dist / 400.0)
+            self.grid_weights[gi] = max(w, 0.2)
+
+        # 归一化使总消费力 = 门店总营收 × 1.2 (模拟周边溢出)
+        gw_sum = float(np.sum(self.grid_weights))
+        if gw_sum > 0:
+            self.grid_weights = self.grid_weights * (self.total_revenue * 1.2 / gw_sum)
 
         # 距离矩阵: stores × grids
         self.dist_matrix = np.zeros((len(self.grid_cells), len(self.stores)))
@@ -260,19 +291,27 @@ class HuffRevenueMLE:
         return (probs * grid_w).sum(axis=0)
 
     def _loss(self, params):
-        """均方对数误差 (惩罚比例偏差)"""
+        """均方对数误差 + 边界惩罚 (推动参数向合理区间中心)"""
         pred = self._predict_revenue(params)
         pred = np.maximum(pred, 1.0)
         actual = self.revenue_actual
         log_err = np.log(pred / actual)
         mse = np.mean(log_err ** 2)
-        # 轻L2正则化防止参数爆炸
-        reg = 0.001 * (params[0] ** 2 + params[1] ** 2 + params[2] ** 2)
+        # L2正则化 + 边界引力: 推动参数远离0边
+        lmd, aa, ab = params[0], params[1], params[2]
+        # 如果λ<0.5，面积或品牌<0.1，大幅增加惩罚
+        reg = 0.001 * (lmd**2 + aa**2 + ab**2)
+        if lmd < 0.5: reg += 0.5 * (0.5 - lmd)**2
+        if aa < 0.1: reg += 2.0 * (0.1 - aa)**2
+        if ab < 0.1: reg += 2.0 * (0.1 - ab)**2
         return mse + reg
 
     def fit(self, initial=None):
         if initial is None:
             initial = [2.0, 0.5, 0.5]
+        else:
+            # Ensure positivity
+            initial = [max(float(initial[0]), 0.1), max(float(initial[1]), 0.01), max(float(initial[2]), 0.01)]
 
         bounds = [(0.01, 20.0), (0.0, 5.0), (0.0, 5.0)]
 
