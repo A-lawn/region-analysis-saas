@@ -128,6 +128,9 @@ services:
     build:
       context: ./frontend-vue
       dockerfile: Dockerfile
+      args:
+        VITE_AMAP_WEB_KEY: "${AMAP_WEB_KEY:-}"
+        VITE_AMAP_SECRET: "${AMAP_SERVER_KEY:-}"
     container_name: region-analysis-web
     ports:
       - "8080:80"
