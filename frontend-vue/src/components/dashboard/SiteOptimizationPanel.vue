@@ -136,14 +136,14 @@ B,116.420000,39.915000"></textarea>
       </div>
 
       <!-- Game params -->
-      <div class="field-row field">
-        <div class="field-half">
-          <label class="field-label">我方开店数</label>
-          <input type="number" v-model.number="gameLeaderP" min="1" max="20" class="input" />
+      <div class="inline-row">
+        <div class="inline-col">
+          <span class="inline-label">我方开店数</span>
+          <input type="number" v-model.number="gameLeaderP" min="1" max="20" class="inline-input" />
         </div>
-        <div class="field-half">
-          <label class="field-label">竞品开店数</label>
-          <input type="number" v-model.number="gameFollowerQ" min="0" max="20" class="input" />
+        <div class="inline-col">
+          <span class="inline-label">竞品开店数</span>
+          <input type="number" v-model.number="gameFollowerQ" min="0" max="20" class="inline-input" />
         </div>
       </div>
 
@@ -257,14 +257,14 @@ B,116.420000,39.915000"></textarea>
       </div>
 
       <!-- Compare params -->
-      <div class="field-row field">
-        <div class="field-half">
-          <label class="field-label">竞品开店数</label>
-          <input type="number" v-model.number="gameFollowerQ" min="0" max="20" class="input" />
+      <div class="inline-row">
+        <div class="inline-col">
+          <span class="inline-label">竞品开店数</span>
+          <input type="number" v-model.number="gameFollowerQ" min="0" max="20" class="inline-input" />
         </div>
-        <div class="field-half">
-          <label class="field-label">竞品候选</label>
-          <div class="field-hint">{{ gameFollowerCandidates.length }} 个 (博弈模式选择)</div>
+        <div class="inline-col">
+          <span class="inline-label">竞品候选</span>
+          <input type="text" readonly :value="gameFollowerCandidates.length + ' 个'" class="inline-input muted" />
         </div>
       </div>
 
@@ -608,6 +608,51 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-row { display: flex; gap: var(--space-2); align-items: flex-start; }
 .field-half { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+
+/* ── Inline row (开店数并排) ── */
+.inline-row {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg-input);
+  border-radius: 10px;
+}
+.inline-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.inline-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.01em;
+}
+.inline-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-bg-card-solid);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-system);
+  color: var(--color-text-primary);
+  text-align: center;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+.inline-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-subtle);
+}
+.inline-input.muted {
+  color: var(--color-text-tertiary);
+  cursor: default;
+}
 .field-label {
   font-size: 12px;
   font-weight: 500;
