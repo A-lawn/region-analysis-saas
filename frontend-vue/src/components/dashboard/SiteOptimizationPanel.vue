@@ -826,8 +826,20 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 .huff-badge.mle, .huff-badge.cached_mle { background: var(--color-success-bg); color: var(--color-success); }
 .huff-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .huff-item { display: flex; gap: 4px; align-items: baseline; }
-.huff-key { font-size: 11px; color: var(--color-text-tertiary); font-family: monospace; }
-.huff-val { font-size: 11px; font-weight: 600; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.huff-key {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-family: "Times New Roman", "STIX Two Text", "Cambria Math", Georgia, serif;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+.huff-val {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  font-family: "Times New Roman", "STIX Two Text", serif;
+  font-variant-numeric: tabular-nums;
+}
 .huff-footer { display: flex; justify-content: flex-end; margin-top: 2px; }
 
 /* ── Card list (results) ── */
