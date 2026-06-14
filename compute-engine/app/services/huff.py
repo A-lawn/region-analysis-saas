@@ -322,7 +322,8 @@ class HuffRevenueMLE:
             return self._fit_consumption_allocation(initial)
 
     def _fit_revenue_ratios(self, initial=None):
-        """核心方法：门店营收比值 → Huff吸引力比值 → 拟合参数"""
+        """核心方法：门店营收比值 → Huff吸引力比值 → 拟合参数
+        自适应半径：从行业半径开始，逐步放宽直到获得足够店对"""
         if initial is None:
             params = np.array([2.0, 0.5, 0.5])
         else:
@@ -331,26 +332,32 @@ class HuffRevenueMLE:
                                max(float(initial[2]), 0.01)])
 
         n_stores = len(self.stores)
-        max_dist = self.radius_m  # 只考虑真正共享客户群的店对
 
-        # 构建营收比值观测对
+        # 自适应半径：300m → 500m → 800m → 1500m，直到≥10对
+        candidate_radii = [self.radius_m, 500, 800, 1500, 3000]
         pairs = []
-        for i in range(n_stores):
-            for j in range(i + 1, n_stores):
-                si, sj = self.stores[i], self.stores[j]
-                ri, rj = si.get("daily_revenue", 0), sj.get("daily_revenue", 0)
-                if ri <= 0 or rj <= 0:
-                    continue
-                dist = self._haversine(si["lat"], si["lng"], sj["lat"], sj["lng"])
-                if dist > max_dist:
-                    continue
-                if dist < 5:  # 同位置忽略
-                    continue
-                # 营收比值 > 1表示i店更强
-                ratio = max(ri / rj, rj / ri)
-                if ratio > 20:  # 极端比值跳过
-                    continue
-                pairs.append((i, j, ri, rj, dist))
+        used_radius = self.radius_m
+
+        for radius in candidate_radii:
+            pairs = []
+            for i in range(n_stores):
+                for j in range(i + 1, n_stores):
+                    si, sj = self.stores[i], self.stores[j]
+                    ri, rj = si.get("daily_revenue", 0), sj.get("daily_revenue", 0)
+                    if ri <= 0 or rj <= 0:
+                        continue
+                    dist = self._haversine(si["lat"], si["lng"], sj["lat"], sj["lng"])
+                    if dist > radius or dist < 5:
+                        continue
+                    ratio = max(ri / rj, rj / ri)
+                    if ratio > 20:
+                        continue
+                    pairs.append((i, j, ri, rj, dist))
+            used_radius = radius
+            if len(pairs) >= 10:
+                break
+
+        logger.info("HuffRevenueMLE(ratio): radius=%dm pairs=%d", used_radius, len(pairs))
 
         if len(pairs) < 5:
             return RevenueFitResult(
