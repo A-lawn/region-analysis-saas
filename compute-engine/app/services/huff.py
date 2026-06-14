@@ -331,7 +331,7 @@ class HuffRevenueMLE:
                                max(float(initial[2]), 0.01)])
 
         n_stores = len(self.stores)
-        max_dist = max(self.radius_m * 2, 2000)  # 2倍半径 or 2km
+        max_dist = self.radius_m  # 只考虑真正共享客户群的店对
 
         # 构建营收比值观测对
         pairs = []
