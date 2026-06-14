@@ -852,18 +852,20 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 }
 .point-input {
   padding: 4px 6px;
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   font-family: var(--font-system);
   color: var(--color-text-primary);
-  background: var(--color-bg-card-solid);
+  background: var(--color-bg-input);
   flex: 1;
   min-width: 0;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.point-input:focus { outline: none; border-color: var(--color-accent); }
-.point-input.coord { max-width: 85px; font-variant-numeric: tabular-nums; }
+.point-input::placeholder { color: var(--color-text-tertiary); font-weight: 400; font-size: 10px; }
+.point-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px rgba(0,122,255,0.12); }
+.point-input.coord { max-width: 85px; text-align: center; font-variant-numeric: tabular-nums; }
 .point-input.coord.sm { max-width: 58px; }
 .point-meta {
   font-size: 10px;
