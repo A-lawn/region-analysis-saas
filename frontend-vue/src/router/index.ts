@@ -24,7 +24,19 @@ const router = createRouter({
       meta: { requiresAuth: false },
     },
     {
-      path: '/report/:id', name: 'report', component: () => import('@/views/ReportView.vue'), meta: { requiresAuth: true }, }, { path: '/apikeys',
+      path: '/reset-password',
+      name: 'reset-password',
+      component: () => import('@/views/ResetPasswordView.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
+      path: '/report/:id',
+      name: 'report',
+      component: () => import('@/views/ReportView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/apikeys',
       name: 'apikeys',
       component: () => import('@/views/ApiKeysView.vue'),
       meta: { requiresAuth: true },
