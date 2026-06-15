@@ -23,7 +23,7 @@
           </button>
         </form>
         <p class="link-text">
-          <router-link :to="{ name: `login` }">返回登录</router-link>
+          <router-link :to="{ name: 'login' }">返回登录</router-link>
         </p>
       </div>
     </div>
@@ -89,6 +89,80 @@ async function submitReset() {
 </script>
 
 <style scoped>
+.login-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--color-bg-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+.login-bg-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 600px;
+  height: 600px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(0, 122, 255, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  background: var(--color-bg-card);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  padding: var(--space-10);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  width: min(420px, 90vw);
+  max-width: 90vw;
+  border: 1px solid var(--color-border);
+}
+
+.login-card h2 {
+  text-align: center;
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  letter-spacing: -0.01em;
+}
+
+.login-subtitle {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-6);
+}
+
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.field label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  margin-bottom: var(--space-1);
+  color: var(--color-text-secondary);
+}
+
+.login-submit {
+  margin-top: var(--space-2);
+  padding: 12px;
+  font-size: var(--text-base);
+}
+
+.link-text {
+  text-align: center;
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
 .reset-section {
   text-align: center;
 }
