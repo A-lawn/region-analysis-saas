@@ -1,65 +1,155 @@
-// Shared types for spatial analysis services
+// ============================================================
+// Industry Insight Engine Types
+// ============================================================
 
-export interface TriangulationMetrics {
-  coverageConnectivity: number;
-  overlapRatio: number;
-  gapRatio: number;
-  totalEdges: number;
-  connectedEdges: number;
-  gappedEdges: number;
-  minEdgeM: number;
-  maxEdgeM: number;
-  avgEdgeM: number;
+export interface InsightCondition {
+  field: string;
+  op: "gte" | "lte" | "eq" | "between" | "gt" | "lt";
+  value?: number;
+  min?: number;
+  max?: number;
 }
 
-export interface DecayZone {
-  zone: string;
-  areaSqm: number;
-  weight: number;
-  geojson: any;
+export interface HardConstraint {
+  id: string;
+  description: string;
+  condition: InsightCondition;
+  message: string;
 }
 
-export interface OverlapLayers {
-  single: number;
-  double: number;
-  triplePlus: number;
+export interface SoftPenalty {
+  id: string;
+  description: string;
+  condition: InsightCondition;
+  penalty: number;
+  message: string;
 }
 
-export interface CoverageResult {
-  coveredArea: number;
-  bufferUnionArea: number;
-  totalBufferArea: number;
-  hullArea: number;
-  uncoveredArea: number;
-  geojson: any;
-  triangulation?: TriangulationMetrics;
-  hullType?: string;
-  clipAreaSqm?: number;
-  networkFallback?: boolean;
-  decayBreakdown?: DecayZone[];
-  effectiveCoveredArea?: number;
-  effectiveCoverageRatio?: number;
-  overlapLayers?: OverlapLayers;
-  overlapGeojson?: { single: any; double: any; triplePlus: any };
-  cannibalizationIndex?: number;
-  advice?: { priority: string; message: string }[];
-  whiteSpaceGeojson?: any;
+export interface NonlinearRule {
+  id: string;
+  description: string;
+  condition: InsightCondition;
+  bonus: number;
+  message: string;
 }
 
-export interface HeatmapPoint {
+export interface IndustryInsightConfig {
+  hard_constraints: HardConstraint[];
+  soft_penalties: SoftPenalty[];
+  nonlinear_rules: NonlinearRule[];
+}
+
+export interface InsightResult {
+  candidateName: string;
+  eliminated: boolean;
+  eliminationReason?: string;
+  penaltyFactors: { id: string; factor: number; message: string }[];
+  bonuses: { id: string; bonus: number; message: string }[];
+  insights: { type: "eliminated" | "warning" | "positive" | "info"; message: string }[];
+}
+
+export interface CandidateInsight {
+  eliminated: boolean;
+  eliminationReason?: string;
+  insights: { type: "eliminated" | "warning" | "positive" | "info"; message: string }[];
+}
+
+// KPI context passed from spatial analysis to insight engine
+export interface CandidateKpiContext {
+  name: string;
   lng: number;
   lat: number;
-  weight: number;
+  competitorCount300m: number;
+  competitorCount500m: number;
+  competitorCount1000m: number;
+  minDistanceToExisting: number;
+  area: number;
+  brand: number;
+  roadFrontage: number;
+  populationDensity: number;
+  footTraffic: number;
+  parkingAvailability: number;
+  nearMetro: boolean;
+  nearHospital: boolean;
+  nearSchool: boolean;
+  isCommercialZone: boolean;
+  isResidentialZone: boolean;
 }
 
-export interface ClusterResult {
-  clusters: { clusterId: number; pointCount: number; center: { lng: number; lat: number }; points: any[] }[];
-  noise: number;
+// ============================================================
+// Industry Insight Engine Types
+// ============================================================
+
+export interface InsightCondition {
+  field: string;
+  op: "gte" | "lte" | "eq" | "between" | "gt" | "lt";
+  value?: number;
+  min?: number;
+  max?: number;
 }
 
-export interface SiteOptimizationOptions {
-  candidates: { name: string; lng: number; lat: number }[];
-  weights: Record<string, number> & { distanceWeight?: number; blindSpotWeight?: number; densityWeight?: number };
-  topK: number;
-  industry?: string;
+export interface HardConstraint {
+  id: string;
+  description: string;
+  condition: InsightCondition;
+  message: string;
+}
+
+export interface SoftPenalty {
+  id: string;
+  description: string;
+  condition: InsightCondition;
+  penalty: number;
+  message: string;
+}
+
+export interface NonlinearRule {
+  id: string;
+  description: string;
+  condition: InsightCondition;
+  bonus: number;
+  message: string;
+}
+
+export interface IndustryInsightConfig {
+  hard_constraints: HardConstraint[];
+  soft_penalties: SoftPenalty[];
+  nonlinear_rules: NonlinearRule[];
+}
+
+export interface InsightResult {
+  candidateName: string;
+  eliminated: boolean;
+  eliminationReason?: string;
+  penaltyFactors: { id: string; factor: number; message: string }[];
+  bonuses: { id: string; bonus: number; message: string }[];
+  insights: { type: "eliminated" | "warning" | "positive" | "info"; message: string }[];
+}
+
+export interface CandidateInsight {
+  eliminated: boolean;
+  eliminationReason?: string;
+  insights: { type: "eliminated" | "warning" | "positive" | "info"; message: string }[];
+}
+
+// KPI context passed from spatial analysis to insight engine
+export interface CandidateKpiContext {
+  name: string;
+  lng: number;
+  lat: number;
+  competitorCount300m: number;
+  competitorCount500m: number;
+  competitorCount1000m: number;
+  minDistanceToExisting: number;
+  area: number;
+  brand: number;
+  roadFrontage: number;
+  populationDensity: number;
+  footTraffic: number;
+  parkingAvailability: number;
+  nearMetro: boolean;
+  nearHospital: boolean;
+  nearSchool: boolean;
+  isCommercialZone: boolean;
+  isResidentialZone: boolean;
 }

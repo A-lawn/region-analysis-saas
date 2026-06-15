@@ -3,7 +3,7 @@ import { config } from "../config";
 import { cacheGet, cacheSet } from "./cacheService";
 import crypto from "crypto";
 import { batchCompetitionAnalysis } from "./competitionService";
-import { generateAdvice } from "./decisionEngine";
+import { generateAdvice, generateAdviceSync } from "./decisionEngine";
 import { AppError } from "../middleware/errorHandler";
 import { batchNormalizeKpis, weightedSum } from "./analysis/kpiNormalizer";
 import type { KpiNormalizerEntry, KpiValueMap } from "./analysis/kpiNormalizer";
@@ -781,7 +781,53 @@ export async function computeSiteOptimization(
         },
         advice: advice.map(a => ({ priority: a.priority, message: a.message })) });
     }
+
     scored.sort((a, b) => b.score - a.score);
+
+    // v2.1: 行业洞察评估
+    if (options.industry) {
+      try {
+        const { evaluateCandidates } = require("./insightEngine");
+        const kpiContexts = scored.map((s: any) => ({
+          name: s.name,
+          lng: s.lng || 0,
+          lat: s.lat || 0,
+          competitorCount300m: s.dimensions?.competitors500m > 0 ? (s.dimensions.competitors300m || s.dimensions.competitors500m) : 0,
+          competitorCount500m: s.dimensions?.competitors500m || 0,
+          competitorCount1000m: s.dimensions?.competitors1000m || 0,
+          minDistanceToExisting: s.dimensions?.minDistanceMeters || 0,
+          area: s.area || 100,
+          brand: s.brand || 0.5,
+          roadFrontage: 50,
+          populationDensity: s.dimensions?.nearbyPoints || 0,
+          footTraffic: 10,
+          parkingAvailability: 0,
+          nearMetro: false,
+          nearHospital: false,
+          nearSchool: false,
+          isCommercialZone: true,
+          isResidentialZone: false,
+        }));
+        const insightMap = await evaluateCandidates(options.industry, kpiContexts);
+        for (const s of scored as any[]) {
+          const insight = insightMap.get(s.name);
+          if (insight) {
+            s.eliminated = insight.eliminated;
+            s.eliminationReason = insight.eliminationReason;
+            s.insights = insight.insights;
+            if (insight.eliminated) s.score = 0;
+          }
+        }
+        scored.sort((a: any, b: any) => {
+          if (a.eliminated && !b.eliminated) return 1;
+          if (!a.eliminated && b.eliminated) return -1;
+          return b.score - a.score;
+        });
+      } catch (err: any) {
+        console.warn("[SiteOpt] Insight evaluation failed:", err.message);
+      }
+    }
+
     return { candidates: scored.slice(0, topK), weights: normalizedKpi, algorithm, industry: options.industry || null };
   });
 }

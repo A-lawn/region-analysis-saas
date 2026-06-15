@@ -1331,3 +1331,17 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 .btn-text.accent { color: var(--color-accent); }
 .btn-text.accent:hover { color: #0055CC; }
 </style>
+
+/* ── Insight tags ── */
+.card-insights { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.insight-tag {
+  font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-full);
+  font-weight: var(--font-medium); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: var(--leading-tight);
+}
+.insight-eliminated { background: var(--color-error-bg); color: var(--color-error); }
+.insight-warning { background: var(--color-warning-bg); color: var(--color-warning); }
+.insight-positive { background: var(--color-success-bg); color: var(--color-success); }
+.insight-info { background: var(--color-accent-subtle); color: var(--color-accent); }
+
+.card-eliminated { opacity: 0.45; border-left: 3px solid var(--color-error); }

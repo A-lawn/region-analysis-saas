@@ -118,10 +118,10 @@
       <section v-if="siteData?.candidates?.length" class="report-section">
         <h3>8. 选址优化</h3>
         <table class="info-table">
-          <thead><tr><th>排名</th><th>名称</th><th>得分</th><th>竞品500m</th><th>最近距离</th></tr></thead>
+          <thead><tr><th>排名</th><th>名称</th><th>得分</th><th>洞察</th><th>竞品500m</th><th>最近距离</th></tr></thead>
           <tbody>
             <tr v-for="(c, i) in siteData.candidates" :key="i">
-              <td>{{ Number(i) + 1 }}</td><td>{{ c.name }}</td><td>{{ c.score }}</td>
+              <td>{{ Number(i) + 1 }}</td><td>{{ c.name }}</td><td :class="{ 'score-eliminated': c.eliminated }">{{ c.score }}</td><td class="insight-cell"><span v-if="c.eliminated" class="insight-tag insight-eliminated">淘汰</span><span v-for="(ins, idx) in (c.insights || [])" :key="idx" class="insight-tag" :class="'insight-' + ins.type">{{ ins.message }}</span></td>
               <td>{{ c.dimensions?.competitors500m || '-' }}</td>
               <td>{{ c.dimensions?.minDistanceMeters || '-' }}m</td>
             </tr>
@@ -274,4 +274,18 @@ onMounted(async () => {
     padding-bottom: 5px;
   }
 }
+</style>
+
+<style scoped>
+.score-eliminated { color: var(--color-error); text-decoration: line-through; }
+.insight-cell { max-width: 160px; }
+.insight-tag {
+  display: inline-block; font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-full);
+  font-weight: var(--font-medium); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin: 1px 2px;
+}
+.insight-eliminated { background: var(--color-error-bg); color: var(--color-error); }
+.insight-warning { background: var(--color-warning-bg); color: var(--color-warning); }
+.insight-positive { background: var(--color-success-bg); color: var(--color-success); }
+.insight-info { background: var(--color-accent-subtle); color: var(--color-accent); }
 </style>

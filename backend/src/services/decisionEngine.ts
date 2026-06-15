@@ -42,11 +42,30 @@ export interface AnalysisContext {
   populationDensity?: number;
   parkingAvailability?: number;
   roadFrontage?: number;
+  // v2.1: 行业洞察字段
+  candidateScore?: number;
+  competitorCount300m?: number;
+  competitorCount500m?: number;
+  competitorCount1000m?: number;
+  area?: number;
+  brand?: number;
+  nearMetro?: boolean;
+  nearHospital?: boolean;
+  nearSchool?: boolean;
+  isCommercialZone?: boolean;
+  isResidentialZone?: boolean;
 }
 
 export interface DecisionAdvice {
   priority: "high" | "medium" | "low";
   message: string;
+}
+
+export interface DecisionResult {
+  advice: DecisionAdvice[];
+  eliminated?: boolean;
+  eliminationReason?: string;
+  insights?: { type: "eliminated" | "warning" | "positive" | "info"; message: string }[];
 }
 
 // ===== Industry-specific thresholds (fallback; DB values take precedence) =====
