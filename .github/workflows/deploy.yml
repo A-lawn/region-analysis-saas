@@ -27,7 +27,7 @@ jobs:
             echo "[2/5] Updating .env..."
             cat > .env << 'ENVEOF'
             NODE_ENV=production
-            APP_URL=https://${{ secrets.ALIYUN_DOMAIN }}
+            APP_URL=http://${{ secrets.ALIYUN_DOMAIN }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             ENC_KEY=${{ secrets.ENC_KEY }}
