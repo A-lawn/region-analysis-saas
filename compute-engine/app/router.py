@@ -7,10 +7,17 @@ from app.config import settings
 from app.models.common import ComputeResponse
 from app.models.site_optimization import (
     GameSolveRequest, ScenarioRequest, CompareRequest, HuffFitRequest,
+    LPCandidate, LPOptimizeRequest,
+    SpatialPointInput, SpatialStatsRequest,
 )
 from app.services.game_theory import StackelbergSolver, StoreInfo, DemandInfo
 from app.services.huff import HuffMLE, HuffRevenueMLE
 from app.services.data_loader import load_project_points, load_huff_observations
+from app.services.lp_optimizer import solve_lp, Candidate as LPCand
+from app.services.spatial_stats import (
+    SpatialPoint as SPPoint,
+    compute_morans_i, compute_lisa, compute_ripleys_k, spatial_stats_report,
+)
 from app.utils.logger import get_logger
 import math
 
@@ -410,3 +417,129 @@ async def prepare_game_data(request: Request):
     except Exception as e:
         logger.exception("数据准备失败")
         return JSONResponse(_err("DATA_ERROR", str(e)), status_code=500)
+
+
+# ================================================================
+# v2.1: POST /compute/lp/optimize — LP选址优化
+# ================================================================
+
+@router.post("/compute/lp/optimize")
+async def lp_optimize(req: LPOptimizeRequest):
+    t0 = time.time()
+
+    try:
+        candidates = [
+            LPCand(id=c.id, lng=c.lng, lat=c.lat, score=c.score, cost=c.cost, revenue=c.revenue)
+            for c in req.candidates
+        ]
+
+        result = solve_lp(
+            candidates=candidates,
+            budget=req.budget,
+            min_distance_m=req.min_distance_m,
+            use_score_as_cost=req.use_score_as_cost,
+        )
+
+        elapsed = round((time.time() - t0) * 1000)
+
+        return _ok({
+            "selected_ids": result.selected_ids,
+            "total_score": result.total_score,
+            "total_cost": result.total_cost,
+            "total_revenue": result.total_revenue,
+            "budget": result.budget,
+            "budget_used_pct": result.budget_used_pct,
+            "margin_to_budget": result.margin_to_budget,
+            "candidates_considered": result.candidates_considered,
+            "algorithm": result.algorithm,
+            "iterations": result.iterations,
+            "discarded": {
+                "by_distance": result.discarded_by_distance,
+                "by_budget": result.discarded_by_budget,
+            },
+        }, {"compute_time_ms": elapsed})
+
+    except Exception as e:
+        logger.exception("LP优化失败")
+        return JSONResponse(_err("LP_ERROR", str(e)), status_code=500)
+
+
+# ================================================================
+# v2.1: POST /compute/spatial/stats — 空间统计分析 (Moran's I + LISA + Ripley's K)
+# ================================================================
+
+@router.post("/compute/spatial/stats")
+async def spatial_stats(req: SpatialStatsRequest):
+    t0 = time.time()
+
+    try:
+        points = [
+            SPPoint(id=p.id, lng=p.lng, lat=p.lat, weight=p.weight)
+            for p in req.points
+        ]
+
+        report = spatial_stats_report(points)
+
+        # 如果从 compute_morans_i 调用需要自定义 permutation 数
+        if req.n_permutations != 999:
+            morans_result = compute_morans_i(points, n_permutations=req.n_permutations)
+            report["morans_i"]["value"] = morans_result.morans_i
+            report["morans_i"]["z_score"] = morans_result.z_score
+            report["morans_i"]["p_value"] = morans_result.p_value
+            report["morans_i"]["significance"] = morans_result.significance
+
+        elapsed = round((time.time() - t0) * 1000)
+        report["solve_time_ms"] = elapsed
+
+        return _ok(report, {"compute_time_ms": elapsed})
+
+    except Exception as e:
+        logger.exception("空间统计分析失败")
+        return JSONResponse(_err("SPATIAL_STATS_ERROR", str(e)), status_code=500)
+
+
+# ================================================================
+# v2.1: POST /compute/spatial/ripley-lambda — Ripley's K → Huff λ 推断
+# ================================================================
+
+@router.post("/compute/spatial/ripley-lambda")
+async def ripley_lambda(request: Request):
+    """只用 Ripley's K 推断 Huff λ（轻量端点，不需要全部统计）"""
+    t0 = time.time()
+    body = await request.json()
+
+    try:
+        points_data = body.get("points", [])
+        if len(points_data) < 5:
+            return JSONResponse(
+                _err("TOO_FEW_POINTS", f"至少需要5个点，当前{len(points_data)}个"),
+                status_code=400,
+            )
+
+        points = [
+            SPPoint(id=p.get("id", f"p{i}"), lng=p["lng"], lat=p["lat"], weight=p.get("weight", 1.0))
+            for i, p in enumerate(points_data)
+        ]
+
+        ripley = compute_ripleys_k(
+            points,
+            n_rings=body.get("n_rings", 20),
+            max_distance_m=body.get("max_distance_m"),
+        )
+
+        elapsed = round((time.time() - t0) * 1000)
+
+        return _ok({
+            "peak_aggregation_radius_m": ripley.peak_distance_m,
+            "inferred_huff_lambda": ripley.inferred_lambda,
+            "area_sqkm": ripley.area_sqkm,
+            "l_function": ripley.l_function,
+            "distances": ripley.distances,
+            "k_diff": ripley.k_diff,
+            "n_points": ripley.n_points,
+            "note": "当项目无营收数据时，可用此 λ 替代 Huff MLE 拟合值。λ = 1000 / peak_aggregation_radius_m",
+        }, {"compute_time_ms": elapsed})
+
+    except Exception as e:
+        logger.exception("Ripley K推断失败")
+        return JSONResponse(_err("RIPLEY_ERROR", str(e)), status_code=500)

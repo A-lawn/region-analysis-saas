@@ -204,6 +204,123 @@ export async function fitHuffModelV2(body: HuffFitV2Request) {
   return computeRequest<HuffFitV2Response>("/model/huff-fit-v2", body as any);
 }
 
+
+// ================================================================
+// v2.1: LP 选址优化
+// ================================================================
+
+export interface LPCandidate {
+  id: string;
+  lng: number;
+  lat: number;
+  score: number;
+  cost?: number;
+  revenue?: number;
+}
+
+export interface LPOptimizeRequest {
+  project_id?: string;
+  industry?: string;
+  candidates: LPCandidate[];
+  budget: number;
+  min_distance_m?: number;
+  use_score_as_cost?: boolean;
+}
+
+export interface LPOptimizeResponse {
+  selected_ids: string[];
+  total_score: number;
+  total_cost: number;
+  total_revenue: number;
+  budget: number;
+  budget_used_pct: number;
+  margin_to_budget: number;
+  candidates_considered: number;
+  algorithm: "greedy" | "dp" | "iterswap";
+  iterations: number;
+  discarded: {
+    by_distance: string[];
+    by_budget: string[];
+  };
+}
+
+export async function solveLPOptimize(body: LPOptimizeRequest) {
+  return computeRequest<LPOptimizeResponse>("/compute/lp/optimize", body as any);
+}
+
+// ================================================================
+// v2.1: 空间统计分析
+// ================================================================
+
+export interface SpatialPointInput {
+  id: string;
+  lng: number;
+  lat: number;
+  weight?: number;
+}
+
+export interface SpatialStatsRequest {
+  project_id?: string;
+  points: SpatialPointInput[];
+  n_permutations?: number;
+  ripley_rings?: number;
+  ripley_max_distance_m?: number;
+}
+
+export interface SpatialStatsResponse {
+  morans_i: {
+    value: number;
+    expected: number;
+    z_score: number;
+    p_value: number;
+    significance: "high" | "medium" | "low" | "not_significant";
+    interpretation: string;
+  };
+  lisa: {
+    n_hh: number;
+    n_ll: number;
+    n_hl: number;
+    n_lh: number;
+    clusters: any[];
+  } | null;
+  ripleys_k: {
+    aggregation_radius_m: number | null;
+    inferred_huff_lambda: number | null;
+    area_sqkm: number;
+    l_function: number[];
+    distances: number[];
+  };
+  n_points: number;
+  solve_time_ms: number;
+}
+
+export async function computeSpatialStats(body: SpatialStatsRequest) {
+  return computeRequest<SpatialStatsResponse>("/compute/spatial/stats", body as any);
+}
+
+// ================================================================
+// v2.1: Ripley's K → Huff λ 推断
+// ================================================================
+
+export interface RipleyLambdaRequest {
+  points: { id?: string; lng: number; lat: number; weight?: number }[];
+  n_rings?: number;
+  max_distance_m?: number;
+}
+
+export interface RipleyLambdaResponse {
+  peak_aggregation_radius_m: number | null;
+  inferred_huff_lambda: number | null;
+  area_sqkm: number;
+  l_function: number[];
+  distances: number[];
+  k_diff: number[];
+  n_points: number;
+}
+
+export async function inferHuffLambdaFromRipley(body: RipleyLambdaRequest) {
+  return computeRequest<RipleyLambdaResponse>("/compute/spatial/ripley-lambda", body as any);
+}
 export async function checkEngineHealth(): Promise<boolean> {
   try {
     const controller = new AbortController();
