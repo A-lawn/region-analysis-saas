@@ -157,6 +157,7 @@ class RevenueFitResult:
     actual_revenues: Dict[str, float]
     n_grid_cells: int
     n_stores: int
+    n_pairs: int = 0
 
 
 class HuffRevenueMLE:
@@ -176,8 +177,15 @@ class HuffRevenueMLE:
         self.total_revenue = float(np.sum(self.revenue_actual))
 
         # 门店属性
-        self.areas = np.array([s.get("area", 100.0) for s in stores])
-        self.brands = np.array([s.get("brand", 0.5) for s in stores])
+        # 归一化面积：Min-Max -> [0.1, 1.0]，消除量纲差异
+        raw_areas = np.array([s.get("area", 100.0) for s in stores])
+        a_min, a_max = np.min(raw_areas), np.max(raw_areas)
+        if a_max > a_min:
+            self.areas = 0.1 + 0.9 * (raw_areas - a_min) / (a_max - a_min)
+        else:
+            self.areas = np.full_like(raw_areas, 0.55)
+        self.areas_raw = raw_areas
+        self.brands = np.clip(np.array([s.get("brand", 0.5) for s in stores]), 0.01, 1.0)
 
         # 为每家门店生成周边H3网格
         self._build_grid()
@@ -312,13 +320,13 @@ class HuffRevenueMLE:
         revenue_ratio_results = self._fit_revenue_ratios(initial)
 
         # ── Phase 2: 消费力分配法 (作为补充，仅在比值法信号不足时) ──
-        if revenue_ratio_results["n_pairs"] >= 10:
+        if revenue_ratio_results.n_pairs >= 10:
             # 比值法信号充足，优先使用
             return revenue_ratio_results
         else:
             # 比值对不足时降级到消费力分配
             logger.info("HuffRevenueMLE: 营收比值对不足(%d), 降级到消费力分配法",
-                         revenue_ratio_results["n_pairs"])
+                         revenue_ratio_results.n_pairs)
             return self._fit_consumption_allocation(initial)
 
     def _fit_revenue_ratios(self, initial=None):
@@ -365,7 +373,8 @@ class HuffRevenueMLE:
                 r_squared=0, aic=0, convergence=False,
                 predicted_revenues={}, actual_revenues={},
                 n_grid_cells=0, n_stores=n_stores,
-            )
+            n_pairs=0,
+        )
 
         # 损失函数：对所有店对的营收比 vs Huff吸引力比
         def ratio_loss(x):
@@ -444,6 +453,7 @@ class HuffRevenueMLE:
             actual_revenues={s["id"]: float(s.get("daily_revenue", 0)) for s in self.stores},
             n_grid_cells=0,
             n_stores=len(self.stores),
+            n_pairs=len(pairs),
         )
 
     def _fit_consumption_allocation(self, initial=None):
