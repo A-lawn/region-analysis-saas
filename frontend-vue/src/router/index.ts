@@ -6,6 +6,12 @@ const router = createRouter({
   routes: [
     {
       path: '/',
+      name: 'site-workbench',
+      component: () => import('@/views/SiteWorkbenchView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/upload',
       name: 'upload',
       component: () => import('@/views/UploadView.vue'),
       meta: { requiresAuth: true },
@@ -44,7 +50,7 @@ const router = createRouter({
   ],
 })
 
-// 1.8 Auth route guard
+// Auth route guard
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {

@@ -1,7 +1,7 @@
-﻿<template>
+<template>
   <div id="app-root">
     <nav id="top-nav" v-if="!isReportPage">
-      <div class="nav-brand" @click="router.push({ name: 'upload' })">
+      <div class="nav-brand" @click="router.push({ name: 'site-workbench' })">
         <span class="logo-icon">
           <AppIcon name="chart" :size="22" />
         </span>
@@ -10,8 +10,11 @@
       <div class="nav-actions">
         <template v-if="authStore.isLoggedIn">
           <span class="nav-user">{{ authStore.user?.email }}</span>
-          <button class="btn btn-sm" @click="router.push({ name: 'upload' })">
-            <AppIcon name="plus" :size="14" />新建项目
+          <button class="btn btn-sm" @click="router.push({ name: 'site-workbench' })">
+            <AppIcon name="target" :size="14" />选址分析
+          </button>
+          <button class="btn btn-sm btn-outline" @click="router.push({ name: 'upload' })">
+            <AppIcon name="plus" :size="14" />导入数据
           </button>
           <button class="btn btn-sm btn-outline" @click="handleLogout">
             <AppIcon name="logout" :size="14" />登出

@@ -118,7 +118,8 @@ export interface SiteCandidate {
   lat: number
   score: number
   dimensions: Record<string, number>
-  advice?: { message: string; priority: "high" | "medium" | "low" }[]
+  advice?: { message: string; priority: "high" | "medium" | "low" }[];
+  confidence?: 'high' | 'medium' | 'low'
 }
 
 export interface SiteOptimizationResult {
@@ -290,3 +291,4 @@ export interface IndustryListItem {
   label: string
   radiusMeters: number
 }
+

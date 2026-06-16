@@ -288,4 +288,15 @@ onMounted(async () => {
 .insight-warning { background: var(--color-warning-bg); color: var(--color-warning); }
 .insight-positive { background: var(--color-success-bg); color: var(--color-success); }
 .insight-info { background: var(--color-accent-subtle); color: var(--color-accent); }
+
+/* Disclaimer */
+.disclaimer-section { border: 2px solid var(--color-warning); background: rgba(245,158,11,0.04); }
+.disclaimer-section h3 { color: var(--color-warning); border-bottom-color: var(--color-warning); }
+.disclaimer-body { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.6; margin-bottom: var(--space-4); }
+.disclaimer-body ul { padding-left: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
+@media print {
+  .disclaimer-section { border: 1px solid #ccc; background: #fafafa; }
+}
 </style>
+
+

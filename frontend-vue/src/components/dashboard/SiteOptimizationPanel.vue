@@ -286,8 +286,8 @@ B,116.420000,39.915000"></textarea>
               </div>
 
               <div class="sheet-actions">
-                <button class="btn-secondary" @click="showCalibration = false">取消</button>
-                <button class="btn-primary" @click="applyCalibration" :disabled="!calibComplete">应用<span v-if="calibComplete"> → λ={{ calibPreview?.lambda.toFixed(1) }}</span></button>
+                <button class="calib-btn calib-btn-cancel" @click="showCalibration = false">取消</button>
+                <button class="calib-btn calib-btn-apply" @click="applyCalibration" :disabled="!calibComplete">应用<span v-if="calibComplete"> → λ={{ calibPreview?.lambda.toFixed(1) }}</span></button>
               </div>
             </div>
           </div>
@@ -1277,9 +1277,36 @@ function popDiff() { const a=compareResult.value?.plan_a?.coverage_population; c
 .sheet-subtitle { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; display: block; }
 
 .sheet-actions {
-  display: flex; justify-content: flex-end; gap: 8px;
+  display: flex; gap: 10px;
   margin-top: 20px; padding-top: 16px;
   border-top: 1px solid var(--color-border-light);
+}
+.calib-btn {
+  flex: 1; padding: 10px 0; border-radius: 10px;
+  font-size: 14px; font-weight: 500;
+  border: none; cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+.calib-btn-cancel {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-light);
+}
+.calib-btn-cancel:hover {
+  background: var(--color-border-light);
+  color: var(--color-text-primary);
+}
+.calib-btn-apply {
+  background: var(--color-accent);
+  color: #fff;
+}
+.calib-btn-apply:hover {
+  background: var(--color-accent-hover);
+}
+.calib-btn-apply:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 /* ── calibration content ── */

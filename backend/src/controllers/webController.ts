@@ -758,4 +758,136 @@ router.get("/projects/:id/game/huff-params", authRequired, async (req: Request, 
   }
 });
 
+
+// ================================================================
+// v3.1: Platform data base APIs (接口预留 — 数据底座落成后生效)
+// ================================================================
+
+// GET /api/web/poi/search — 竞品POI查询
+router.get("/poi/search", authRequired, async (req: Request, res: Response) => {
+  try {
+    const { industry, city, bounds, limit } = req.query as Record<string, string>;
+    if (!industry || !city) {
+      res.status(400).json({ error: "必须指定行业(industry)和城市(city)", code: "MISSING_PARAMS" });
+      return;
+    }
+    const rowLimit = Math.min(parseInt(limit || "500"), 2000);
+
+    let whereClause = "WHERE industry = $[industry] AND city = $[city]";
+    const params: any = { industry, city, limit: rowLimit };
+
+    if (bounds) {
+      const [minLng, minLat, maxLng, maxLat] = bounds.split(",").map(Number);
+      if (!isNaN(minLng) && !isNaN(minLat) && !isNaN(maxLng) && !isNaN(maxLat)) {
+        whereClause += " AND geom && ST_MakeEnvelope($[minLng], $[minLat], $[maxLng], $[maxLat], 4326)";
+        params.minLng = minLng; params.minLat = minLat; params.maxLng = maxLng; params.maxLat = maxLat;
+      }
+    }
+
+    const db = require("../db").default;
+    const rows = await db.manyOrNone(
+      `SELECT id, name, industry, lng, lat, address, city, district, brand_chain, source, collected_at
+       FROM public_poi ${whereClause}
+       ORDER BY collected_at DESC LIMIT $[limit]`,
+      params
+    );
+
+    res.json({
+      points: rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        industry: r.industry,
+        lng: parseFloat(r.lng),
+        lat: parseFloat(r.lat),
+        address: r.address,
+        city: r.city,
+        district: r.district,
+        brandChain: r.brand_chain,
+        source: r.source,
+        collectedAt: r.collected_at,
+      })),
+      total: rows.length,
+      dataCoverageNote: "竞品POI数据来源于公开渠道，存在覆盖缺口。当前数据覆盖行业={industry}，城市={city}。不包含无工商登记的个体工商户、临时摊点等。".replace("{industry}", industry).replace("{city}", city),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, code: "POI_SEARCH_ERROR" });
+  }
+});
+
+// GET /api/web/demand/h3-grid — 人口/消费力H3栅格查询
+router.get("/demand/h3-grid", authRequired, async (req: Request, res: Response) => {
+  try {
+    const db = require("../db").default;
+    const { bounds, resolution } = req.query as Record<string, string>;
+    const resNum = parseInt(resolution || "9");
+
+    let whereClause = "";
+    const params: any = {};
+
+    if (bounds) {
+      const [minLng, minLat, maxLng, maxLat] = bounds.split(",").map(Number);
+      if (!isNaN(minLng) && !isNaN(minLat) && !isNaN(maxLng) && !isNaN(maxLat)) {
+        whereClause = "WHERE ST_Within(ST_SetSRID(ST_MakePoint(lng, lat), 4326), ST_MakeEnvelope($[minLng], $[minLat], $[maxLng], $[maxLat], 4326))";
+        params.minLng = minLng; params.minLat = minLat; params.maxLng = maxLng; params.maxLat = maxLat;
+      }
+    }
+
+    const rows = await db.manyOrNone(
+      `SELECT h3_index, lng, lat, population, consumption_index, residential_ratio, commercial_ratio, data_source, data_year
+       FROM h3_demand_grid ${whereClause}
+       ORDER BY h3_index`,
+      params
+    );
+
+    res.json({
+      cells: rows.map((r: any) => ({
+        h3: r.h3_index,
+        lng: parseFloat(r.lng),
+        lat: parseFloat(r.lat),
+        population: parseFloat(r.population),
+        consumptionIndex: parseFloat(r.consumption_index),
+        residentialRatio: parseFloat(r.residential_ratio),
+        commercialRatio: parseFloat(r.commercial_ratio),
+        dataSource: r.data_source,
+        dataYear: r.data_year,
+      })),
+      total: rows.length,
+      resolution: resNum,
+      dataCoverageNote: `人口数据来源于${rows.length > 0 ? (rows[0] as any).data_source || 'WorldPop' : 'WorldPop'}。实际人口分布可能存在空间误差，仅供选址分析参考。`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, code: "DEMAND_GRID_ERROR" });
+  }
+});
+
+// GET /api/web/demand/stats — 指定区域人口统计摘要
+router.get("/demand/stats", authRequired, async (req: Request, res: Response) => {
+  try {
+    const { bounds } = req.query as Record<string, string>;
+    const db = require("../db").default;
+    if (!bounds) { res.status(400).json({ error: "必须指定bounds参数", code: "MISSING_PARAMS" }); return; }
+    const [minLng, minLat, maxLng, maxLat] = bounds.split(",").map(Number);
+
+    const row = await db.oneOrNone(
+      `SELECT COUNT(*)::INTEGER AS cell_count,
+              COALESCE(SUM(population), 0) AS total_population,
+              COALESCE(AVG(consumption_index), 1.0) AS avg_consumption,
+              COALESCE(AVG(residential_ratio), 0.5) AS avg_residential_ratio
+       FROM h3_demand_grid
+       WHERE ST_Within(ST_SetSRID(ST_MakePoint(lng, lat), 4326), ST_MakeEnvelope($[minLng], $[minLat], $[maxLng], $[maxLat], 4326))`,
+      { minLng, minLat, maxLng, maxLat }
+    );
+
+    res.json({
+      totalPopulation: row ? Math.round(parseFloat(row.total_population)) : 0,
+      cellCount: row ? row.cell_count : 0,
+      avgConsumptionIndex: row ? parseFloat(row.avg_consumption) : 1.0,
+      avgResidentialRatio: row ? parseFloat(row.avg_residential_ratio) : 0.5,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, code: "DEMAND_STATS_ERROR" });
+  }
+});
+
 export default router;
+

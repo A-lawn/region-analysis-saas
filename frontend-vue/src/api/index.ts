@@ -134,6 +134,69 @@ export async function purgeAllDeletedProjects(): Promise<{ purged: number }> {
 
 
 
+// ===== Platform Data APIs (v3.1 — 数据底座接口) =====
+
+export interface PoiPoint {
+  id: string
+  name: string
+  industry: string
+  lng: number
+  lat: number
+  address: string
+  city: string
+  district: string
+  brandChain: string | null
+  source: string
+  collectedAt: string
+}
+
+export interface PoiSearchResult {
+  points: PoiPoint[]
+  total: number
+  dataCoverageNote: string
+}
+
+export async function searchPoi(opts: { industry: string; city: string; bounds?: string; limit?: number }): Promise<PoiSearchResult> {
+  const { data } = await apiClient.get('/poi/search', { params: opts })
+  return data
+}
+
+export interface DemandCell {
+  h3: string
+  lng: number
+  lat: number
+  population: number
+  consumptionIndex: number
+  residentialRatio: number
+  commercialRatio: number
+  dataSource: string
+  dataYear: number
+}
+
+export interface DemandGridResult {
+  cells: DemandCell[]
+  total: number
+  resolution: number
+  dataCoverageNote: string
+}
+
+export async function getDemandGrid(bounds: string, resolution?: number): Promise<DemandGridResult> {
+  const { data } = await apiClient.get('/demand/h3-grid', { params: { bounds, resolution } })
+  return data
+}
+
+export interface DemandStats {
+  totalPopulation: number
+  cellCount: number
+  avgConsumptionIndex: number
+  avgResidentialRatio: number
+}
+
+export async function getDemandStats(bounds: string): Promise<DemandStats> {
+  const { data } = await apiClient.get('/demand/stats', { params: { bounds } })
+  return data
+}
+
 // ===== Game Theory APIs (v3.0) =====
 import type { GameSolveResponse, GameCompareResponse, HuffParams, GameCandidate, ScenarioItem } from '@/types'
 
@@ -225,3 +288,4 @@ export async function getIndustryConfig(industry: string): Promise<any> {
   const { data } = await apiClient.get('/industries/' + industry + '/model')
   return data
 }
+
