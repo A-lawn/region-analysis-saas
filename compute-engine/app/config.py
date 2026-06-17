@@ -3,6 +3,17 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+# 从项目根目录 .env 加载环境变量（本地开发用，Docker 环境下文件不存在则跳过）
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+if os.path.exists(_env_path):
+    with open(_env_path, encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _, _val = _line.partition("=")
+                _key, _val = _key.strip(), _val.strip()
+                if _key not in os.environ:
+                    os.environ[_key] = _val
 
 @dataclass
 class Settings:
