@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="login-view">
     <div class="login-bg-glow"></div>
     <div class="login-card">
@@ -186,7 +186,7 @@ async function submit() {
         password: password.value,
         captchaId: captchaId.value,
         captchaCode: captchaCode.value,
-        agreedToTerms: mode.value === 'register' ? true : undefined,
+
       })
       authStore.setAuth(data.accessToken, data.user)
       show('登录成功', 'success')
@@ -231,7 +231,7 @@ async function resendOtp() {
       captchaId: captchaId.value,
       captchaCode: captchaCode.value,
       agreedToTerms: true,
-        agreedToTerms: mode.value === 'register' ? true : undefined,
+
     })
     successMsg.value = '验证码已重新发送，请查收邮件'
     refreshCaptcha()

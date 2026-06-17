@@ -147,6 +147,7 @@ export interface UserInfo {
   email: string
   tenantId: string
   role: string
+  subscriptionTier?: string
 }
 
 export type CrsType = "wgs84" | "gcj02" | "bd09"
