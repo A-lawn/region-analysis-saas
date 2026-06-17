@@ -10,13 +10,9 @@
 |:---:|:---:|
 | ![快速分析](docs/screenshots/quick-analysis.png) | ![我的数据](docs/screenshots/my-data.png) |
 
-| 定价对比 | Dashboard 分析 |
+| 覆盖分析 | Dashboard 分析 |
 |:---:|:---:|
-| ![定价](docs/screenshots/pricing.png) | ![Dashboard](docs/screenshots/dashboard.png) |
-
-| 分析报告 |
-|:---:|
-| ![报告](docs/screenshots/report.png) |
+| ![定价](docs/screenshots/coverage-analysis.png) | ![Dashboard](docs/screenshots/dashboard.png) |
 
 ---
 
