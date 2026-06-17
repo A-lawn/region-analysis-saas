@@ -1,11 +1,14 @@
 <template>
   <div class="upload-view">
     <div class="hero">
-      <h1>上传数据，开始分析</h1>
-      <p>支持 Excel (.xlsx, .xls, .csv) 格式，智能识别列名</p>
+      <h1 v-if="authStore.isPro || configStore.isFullAccessMode">上传数据，开始分析</h1>
+      <h1 v-else>我的数据</h1>
+      <p v-if="authStore.isPro || configStore.isFullAccessMode">支持 Excel (.xlsx, .xls, .csv) 格式，智能识别列名</p>
+      <p v-else>查看分析记录和历史项目</p>
     </div>
 
-    <div class="upload-card">
+    <UpgradeBanner v-if="!configStore.isFullAccessMode && !authStore.isPro" />
+    <div v-if="authStore.isPro || configStore.isFullAccessMode" class="upload-card">
       <!-- Timeline step 1: CRS -->
       <div class="step" :class="{ 'step-active': !uploadData, 'step-done': !!uploadData }">
         <div class="step-marker">
@@ -115,7 +118,7 @@
             v-for="p in visibleProjects"
             :key="p.id"
             class="project-card"
-            @click="router.push({ name: 'dashboard', params: { id: p.id } })"
+            @click="goToProject(p)"
           >
             <div class="project-card-icon">
               <AppIcon name="chart" :size="18" />
@@ -305,6 +308,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useProjectStore } from '@/stores/project'
+import { useAuthStore } from '@/stores/auth'
+import { useConfigStore } from '@/stores/config'
 import type { CrsType, UploadResult, DeletedProject } from '@/types'
 import { uploadFile, confirmUpload as confirmUploadApi, listProjects } from '@/api'
 import CrsSelector from '@/components/upload/CrsSelector.vue'
@@ -312,10 +317,13 @@ import FileDropZone from '@/components/upload/FileDropZone.vue'
 import ColumnMapper from '@/components/upload/ColumnMapper.vue'
 import DataPreviewTable from '@/components/upload/DataPreviewTable.vue'
 import AppIcon from '@/components/shared/AppIcon.vue'
+import UpgradeBanner from '@/components/shared/UpgradeBanner.vue'
 
 const router = useRouter()
 const { show } = useToast()
 const projectStore = useProjectStore()
+const authStore = useAuthStore()
+const configStore = useConfigStore()
 
 const sourceCrs = ref<CrsType>('gcj02')
 const uploading = ref(false)
@@ -411,7 +419,8 @@ async function confirmUpload() {
     })
     if (result.projectId) {
       show('成功导入 ' + result.rowsInserted + ' 条数据', 'success')
-      router.push({ name: 'dashboard', params: { id: result.projectId } })
+      const dest = authStore.isPro || configStore.isFullAccessMode ? 'dashboard' : 'report'
+        router.push({ name: dest, params: { id: result.projectId } })
     } else if (result.errors?.length) {
       importError.value = result.errors.join('; ')
     }
@@ -445,6 +454,14 @@ async function loadProjects(page = 1) {
 
 // Debounced search
 let searchTimer: ReturnType<typeof setTimeout>
+function goToProject(p: any) {
+  if (authStore.isPro || configStore.isFullAccessMode) {
+    router.push({ name: 'dashboard', params: { id: p.id } })
+  } else {
+    router.push({ name: 'report', params: { id: p.id } })
+  }
+}
+
 function onSearchInput(e: Event) { projectFilter.value = (e.target as HTMLInputElement).value
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {

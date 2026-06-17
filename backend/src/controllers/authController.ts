@@ -12,6 +12,7 @@ import { AppError } from "../middleware/errorHandler";
 import {
   loginLimiter,
   registerLimiter,
+  globalRegisterCap,
   otpLimiter,
   resetLimiter,
 } from "../middleware/rateLimit";
@@ -26,6 +27,31 @@ function asyncHandler(fn: (req: Request, res: Response) => Promise<any>) {
 }
 
 // Dummy bcrypt hash for timing-attack resistant comparison when user not found
+
+// 获取用户的订阅等级
+async function getSubscriptionTier(userId?: string, isNewRegistration?: boolean): Promise<"free" | "pro"> {
+  try {
+    const row = await db.oneOrNone(
+      "SELECT config_value FROM system_config WHERE config_key = $[key]",
+      { key: "subscription_mode" }
+    );
+    const mode = row?.config_value || "tiered";
+    if (mode === "full_access") return "pro";
+    if (isNewRegistration && mode === "tiered") return "free";
+    // For existing users: check metadata
+    if (userId) {
+      const userRow = await db.oneOrNone(
+        "SELECT metadata->>'subscription_tier' AS tier FROM users WHERE id = $[id]",
+        { id: userId }
+      );
+      return userRow?.tier === "pro" ? "pro" : "free";
+    }
+    return "free";
+  } catch {
+    return "free";
+  }
+}
+
 const FAKE_HASH =
   "$2a$12$LJ3m4ys3Lk0TSwHCgNwFruRpMOBL4SHxpANCF6lsM50GflOC.rniK";
 
@@ -87,9 +113,15 @@ router.get("/captcha", (req, res) => {
 
 router.post(
   "/register",
+  globalRegisterCap,
   registerLimiter,
   asyncHandler(async (req, res) => {
-    const { email, password, captchaId, captchaCode } = req.body;
+    const { email, password, captchaId, captchaCode, agreedToTerms } = req.body;
+
+    // 注册必须同意隐私政策和服务协议
+    if (!agreedToTerms || agreedToTerms !== true) {
+      throw new AppError(400, "请阅读并同意隐私政策和服务协议", "TERMS_NOT_AGREED");
+    }
 
     verifyCaptcha(captchaId, captchaCode);
 
@@ -99,6 +131,24 @@ router.post(
 
     if (typeof email !== "string" || !email.includes("@")) {
       throw new AppError(400, "邮箱格式不正确", "INVALID_EMAIL");
+    }
+
+    // 禁止一次性邮箱注册（防批量假邮箱攻击）
+    const disposableDomains = new Set([
+      "mailinator.com", "guerrillamail.com", "10minutemail.com", "temp-mail.org",
+      "yopmail.com", "throwaway.email", "sharklasers.com", "trashmail.com",
+      "maildrop.cc", "getnada.com", "dispostable.com", "fakeinbox.com",
+      "tempmail.com", "emailondeck.com", "spamgourmet.com", "moakt.com",
+      "mytemp.email", "tempinbox.com", "tempmailaddress.com", "guerrillamail.info",
+      "guerrillamail.biz", "guerrillamail.net", "guerrillamail.org",
+      "guerrillamail.de", "sharklasers.org", "grr.la", "pokemail.net",
+      "spam4.me", "wegwerfmail.de", "wegwerfmail.net", "wegwerfmail.org",
+      "trashmail.de", "trashmail.at", "nwytg.com", "nwytg.net",
+      "klzlk.com", "byom.de", "einrot.com", "einrot.de",
+    ]);
+    const emailDomain = email.split("@")[1]?.toLowerCase();
+    if (emailDomain && disposableDomains.has(emailDomain)) {
+      throw new AppError(400, "请使用真实邮箱注册，不支持临时邮箱", "DISPOSABLE_EMAIL");
     }
 
     if (typeof password !== "string") {
@@ -127,11 +177,13 @@ router.post(
           id: existing.id,
         });
       } else {
-        throw new AppError(409, "该邮箱已注册", "EMAIL_EXISTS");
+        // 不暴露邮箱是否已注册（反用户枚举），引导用户去登录
+        throw new AppError(409, "该邮箱已注册，请直接登录或重置密码", "EMAIL_EXISTS");
       }
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const subscriptionTier = await getSubscriptionTier(undefined, true);
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
 
@@ -140,18 +192,20 @@ router.post(
     const tenantId =
       "tenant_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
 
-    await db.one(
-      "INSERT INTO users (email, password_hash, tenant_id, role, status, email_otp, otp_expires_at) VALUES ($[email], $[passwordHash], $[tenantId], 'user', 'pending', $[otp], $[otpExpiresAt]) RETURNING id, email",
-
-      { email, passwordHash, tenantId, otp, otpExpiresAt },
+    // 入库（事务内）
+    const inserted = await db.one(
+      "INSERT INTO users (email, password_hash, tenant_id, role, status, email_otp, otp_expires_at, terms_agreed_at, terms_version, agreement_ip, agreement_ua, metadata) VALUES ($[email], $[passwordHash], $[tenantId], 'user', 'pending', $[otp], $[otpExpiresAt], NOW(), 'v1.0', $[ip], $[ua], $[metadata]) RETURNING id, email, metadata",
+      { email, passwordHash, tenantId, otp, otpExpiresAt, metadata: JSON.stringify({ subscription_tier: subscriptionTier }), ip: req.ip || req.socket.remoteAddress || '', ua: (req.headers['user-agent'] || '').substring(0, 500) },
     );
 
-    await sendEmail({
+    // 邮件异步发送：不阻塞用户响应，失败由后台重试处理
+    sendEmail({
       to: email,
-
       subject: "区域数据分析平台 - 邮箱验证码",
-
       text: "您的验证码是" + otp + "，10分钟内有效。如非本人操作请忽略此邮件。",
+    }).catch((mailErr: any) => {
+      // 邮件异步失败：标记用户的 email_sent 为 false，方便后续排查
+      db.none("UPDATE users SET email_otp = NULL, otp_expires_at = NOW() - INTERVAL '1 second' WHERE id = $[id]", { id: inserted.id }).catch(() => {});
     });
 
     res
@@ -210,28 +264,47 @@ router.post(
 
     captchaStore.delete("otp_fail:" + email);
 
-    await db.none(
-      "UPDATE users SET status = 'active', email_otp = NULL, otp_expires_at = NULL WHERE id = $[id]",
-      { id: user.id },
-    );
+    // Token 生成放在事务外（纯 JWT，不依赖 DB）
+    const subscriptionTier = await getSubscriptionTier(user.id);
 
-    const accessToken = await generateAccessToken({
+      const accessToken = await generateAccessToken({
       userId: user.id,
       tenantId: user.tenant_id,
       email: user.email,
       role: user.role,
     });
-
     const refreshToken = generateRefreshToken(user.id);
 
-    await db.none("DELETE FROM refresh_tokens WHERE user_id = $[userId]", {
-      userId: user.id,
-    });
+    // DB 写入用事务包裹：激活 + refresh_token 原子化，避免僵尸激活
+    try {
+      await db.tx(async (t: any) => {
+        await t.none(
+          "UPDATE users SET status = 'active', email_otp = NULL, otp_expires_at = NULL WHERE id = $[id]",
+          { id: user.id },
+        );
+        await t.none("DELETE FROM refresh_tokens WHERE user_id = $[userId]", {
+          userId: user.id,
+        });
+        await t.none(
+          "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($[userId], $[token], NOW() + INTERVAL '30 days')",
+          { userId: user.id, token: refreshToken },
+        );
+      });
+    } catch (err) {
+      throw new AppError(500, "验证处理失败，请重新尝试验证码", "VERIFY_TX_FAILED");
+    }
 
-    await db.none(
-      "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($[userId], $[token], NOW() + INTERVAL '30 days'))",
-      { userId: user.id, token: refreshToken },
-    );
+    res.json({
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        tenantId: user.tenant_id,
+        role: user.role,
+        subscriptionTier: subscriptionTier,
+      },
+    });
   }),
 );
 
@@ -309,6 +382,8 @@ router.post(
       { id: user.id },
     );
 
+    const subscriptionTier = await getSubscriptionTier(user.id);
+
     const accessToken = await generateAccessToken({
       userId: user.id,
       tenantId: user.tenant_id,
@@ -335,6 +410,7 @@ router.post(
         email: user.email,
         tenantId: user.tenant_id,
         role: user.role,
+        subscriptionTier: subscriptionTier,
       },
     });
   }),

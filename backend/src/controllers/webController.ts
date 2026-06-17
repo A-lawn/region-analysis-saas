@@ -30,6 +30,7 @@ import { aggregateByH3 } from "../utils/h3Index";
 import { computeVoronoi } from "../services/voronoiService";
 import { getTaskStatus } from "../services/analysisService";
 import { backupProject, listBackups, restoreProject, removeBackupFile, ensureBackupDir } from "../services/backupService";
+import db from "../db";
 import { loadAllIndustryConfigs, loadIndustryConfig } from "../services/analysis/industryLoader";
 
 const router = Router();
@@ -120,6 +121,15 @@ router.post("/upload", authRequired, upload.single("file"), validateUpload, asyn
       addressCol: detection.addressCol,
       lngCol: detection.lngCol,
       latCol: detection.latCol,
+      categoryCol: detection.categoryCol,
+      revenueCol: detection.revenueCol,
+      floorAreaCol: detection.floorAreaCol,
+      brandScoreCol: detection.brandScoreCol,
+      avgCostCol: detection.avgCostCol,
+      ratingCol: detection.ratingCol,
+      tagsCol: detection.tagsCol,
+      openTimeCol: detection.openTimeCol,
+      parkingCol: detection.parkingCol,
     },
     warnings: errors,
     preview,
@@ -889,5 +899,70 @@ router.get("/demand/stats", authRequired, async (req: Request, res: Response) =>
   }
 });
 
+// GET /api/web/system/config
+router.get("/system/config", async (_req: Request, res: Response) => {
+  try {
+    const row = await db.oneOrNone(
+      "SELECT config_value FROM system_config WHERE config_key = $[key]",
+      { key: "subscription_mode" }
+    );
+    const subscriptionMode = row?.config_value || "tiered";
+    res.json({ subscriptionMode });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, code: "CONFIG_ERROR" });
+  }
+});
+
+// POST /api/web/quick-analysis/create-project
+router.post("/quick-analysis/create-project", authRequired, async (req: Request, res: Response) => {
+  try {
+    const { industry, city, district, candidates } = req.body as {
+      industry: string; city: string; district: string;
+      candidates: { name: string; lng: number; lat: number }[];
+    };
+    if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
+      res.status(400).json({ error: "至少需要一个候选点", code: "MISSING_CANDIDATES" });
+      return;
+    }
+    if (candidates.length > 50) {
+      res.status(400).json({ error: "候选点不能超过50个", code: "TOO_MANY_CANDIDATES" });
+      return;
+    }
+    const tenantId = getTenantId(req);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const projectName = `[快速分析] ${industry || "未知行业"} ${city || ""} ${district || ""} ${dateStr}`;
+
+    const project = await db.one(
+      `INSERT INTO analysis_projects (tenant_id, name, source_crs, point_count, status, is_temporary)
+       VALUES ($[tenantId], $[name], 'gcj02', $[count], 'ready', true)
+       RETURNING id`,
+      { tenantId, name: projectName.trim(), count: candidates.length }
+    );
+
+    const pgp = require("pg-promise")();
+    const cs = new pgp.helpers.ColumnSet(
+      ["project_id", "name", "lng", "lat"], { table: "spatial_points" }
+    );
+    const rows = candidates.map((c: any) => ({
+      project_id: project.id, name: String(c.name || "").substring(0, 100), lng: c.lng, lat: c.lat,
+    }));
+    await db.none(pgp.helpers.insert(rows, cs));
+
+    await db.none(
+      "UPDATE spatial_points SET geom = ST_SetSRID(ST_MakePoint(lng, lat), 4326) WHERE project_id = $[pid] AND geom IS NULL",
+      { pid: project.id }
+    );
+    await db.none(
+      "UPDATE analysis_projects SET bounds = (SELECT ST_Envelope(ST_Collect(geom)) FROM spatial_points WHERE project_id = $[pid]) WHERE id = $[pid]",
+      { pid: project.id }
+    );
+
+    res.json({ projectId: project.id, name: projectName.trim() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, code: "CREATE_QUICK_PROJECT_ERROR" });
+  }
+});
+
 export default router;
+
 

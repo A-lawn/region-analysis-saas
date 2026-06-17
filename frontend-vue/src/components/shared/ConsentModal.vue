@@ -15,6 +15,13 @@
             <li>继续使用即表示您已理解并接受以上声明</li>
           </ul>
         </div>
+        <div class="consent-links">
+          <router-link to="/legal/privacy" target="_blank">隐私政策</router-link>
+          <span class="link-sep">·</span>
+          <router-link to="/legal/terms" target="_blank">服务协议</router-link>
+          <span class="link-sep">·</span>
+          <router-link to="/legal/datasource" target="_blank">数据来源说明</router-link>
+        </div>
         <div class="consent-actions">
           <button class="btn btn-primary" @click="$emit('agree')">我已理解，开始使用</button>
           <button class="btn btn-text" @click="goBack">返回</button>
@@ -50,5 +57,9 @@ function goBack() { router.push({ name: 'upload' }) }
 .consent-card h3 { font-size: var(--text-lg); margin-bottom: var(--space-4); }
 .consent-body { text-align: left; font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.6; }
 .consent-body ul { padding-left: var(--space-4); margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
-.consent-actions { margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); align-items: center; }
+.consent-links { margin-top: var(--space-3); display: flex; justify-content: center; gap: var(--space-2); font-size: var(--text-xs); }
+.consent-links a { color: var(--color-accent); text-decoration: none; }
+.consent-links a:hover { text-decoration: underline; }
+.link-sep { color: var(--color-text-tertiary); }
+.consent-actions { margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); align-items: center; }
 </style>

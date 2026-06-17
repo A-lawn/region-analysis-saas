@@ -1,22 +1,23 @@
 ﻿import db from "../db";
 import { CrsType, convertCoord as convertCoordLib } from "../utils/coordTransform";
+import { normalizeIndustry } from "../config/industry.config";
 import pgPromise from "pg-promise";
 import { pointToH3 } from "../utils/h3Index";
 
 const pgp = pgPromise();
 
-export interface ExcelRow { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; floor_area?: number; brand_score?: number; tags?: string; }
+export interface ExcelRow { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; floor_area?: number; brand_score?: number; tags?: string; avg_cost?: number; rating?: number; open_time?: string; parking?: string; }
 export interface UploadResult { projectId: string; rowsParsed: number; rowsInserted: number; errors: string[]; }
 
 export async function processUpload(
   rows: any[][],
-  columnMapping: { nameCol: number | null; addressCol: number | null; lngCol: number; latCol: number; categoryCol?: number | null; revenueCol?: number | null; floorAreaCol?: number | null; brandScoreCol?: number | null; tagsCol?: number | null },
+  columnMapping: { nameCol: number | null; addressCol: number | null; lngCol: number; latCol: number; categoryCol?: number | null; revenueCol?: number | null; floorAreaCol?: number | null; brandScoreCol?: number | null; tagsCol?: number | null; avgCostCol?: number | null; ratingCol?: number | null; openTimeCol?: number | null; parkingCol?: number | null },
   sourceCrs: CrsType,
   projectName: string,
   tenantId: string = "default"
 ): Promise<UploadResult> {
   const errors: string[] = [];
-  const points: { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; floor_area?: number; brand_score?: number; tags?: string }[] = [];
+  const points: { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; floor_area?: number; brand_score?: number; tags?: string; avg_cost?: number; rating?: number; open_time?: string; parking?: string }[] = [];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -33,7 +34,11 @@ export async function processUpload(
     const floor_area = columnMapping.floorAreaCol != null ? parseFloat(row[columnMapping.floorAreaCol]) || 0 : 0;
     const brand_score = columnMapping.brandScoreCol != null ? parseFloat(row[columnMapping.brandScoreCol]) || 0 : 0;
     const tags = columnMapping.tagsCol != null ? String(row[columnMapping.tagsCol] || '').trim() : '';
-    points.push({ name, address, lng: rawLng, lat: rawLat, category, revenue, floor_area, brand_score, tags });
+    const avgCost = columnMapping.avgCostCol != null ? parseFloat(row[columnMapping.avgCostCol]) || 0 : 0;
+    const rating = columnMapping.ratingCol != null ? parseFloat(row[columnMapping.ratingCol]) || 0 : 0;
+    const openTime = columnMapping.openTimeCol != null ? String(row[columnMapping.openTimeCol] || '').trim() : '';
+    const parking = columnMapping.parkingCol != null ? String(row[columnMapping.parkingCol] || '').trim() : '';
+    points.push({ name, address, lng: rawLng, lat: rawLat, category, revenue, floor_area, brand_score, tags, avg_cost: avgCost, rating, open_time: openTime, parking });
   }
 
   if (points.length === 0) {
@@ -58,7 +63,7 @@ export async function processUpload(
     // 2.3 Batch insert in chunks. Insert lng/lat first, then bulk-update geom+h3.
   const BATCH_SIZE = 2000;
     // Include metadata column if any point has category or revenue
-  const hasMetadata = points.some((p: any) => p.category || p.revenue || p.floor_area || p.brand_score || p.tags);
+  const hasMetadata = points.some((p: any) => p.category || p.revenue || p.floor_area || p.brand_score || p.tags || p.avg_cost || p.rating || p.open_time || p.parking);
   const columns = hasMetadata
     ? ["project_id", "name", "address", "lng", "lat", { name: "metadata", mod: ":json" }]
     : ["project_id", "name", "address", "lng", "lat"];
@@ -84,21 +89,14 @@ export async function processUpload(
       const meta: Record<string, any> = {};
       const cat = (p as any).category;
       if (cat) {
-        // Allow direct English industry code OR Chinese keyword detection
-        const KNOWN_INDUSTRIES = ['convenience','beverage','restaurant','pharmacy','fresh_grocery','supermarket','hotel','medical_aesthetics','education','pet_service','auto4s','logistics'];
-        if (KNOWN_INDUSTRIES.includes(cat.toLowerCase())) {
-          meta.industry = cat.toLowerCase();
-        } else if (cat.includes("药")) meta.industry = "pharmacy";
-        else if (cat.includes("便利") || cat.includes("零售")) meta.industry = "convenience";
-        else if (cat.includes("餐饮") || cat.includes("美食") || cat.includes("火锅")) meta.industry = "restaurant";
-        else if (cat.includes("商超") || cat.includes("超市") || cat.includes("百货")) meta.industry = "supermarket";
-        else if (cat.includes("汽车") || cat.includes("4S")) meta.industry = "auto4s";
-        else if (cat.includes("饮品") || cat.includes("奶茶") || cat.includes("咖啡")) meta.industry = "beverage";
-        else if (cat.includes("酒店") || cat.includes("住宿")) meta.industry = "hotel";
-        else if (cat.includes("教育") || cat.includes("培训")) meta.industry = "education";
-        else if (cat.includes("宠物")) meta.industry = "pet_service";
-        else if (cat.includes("物流") || cat.includes("快递")) meta.industry = "logistics";
-        else meta.industry = cat; // fallback: use raw value
+        // Normalize user category to system industry code
+        const normalized = normalizeIndustry(cat);
+        if (normalized) {
+          meta.industry = normalized.industry;
+          if (normalized.subCategory) {
+            meta.sub_category = normalized.subCategory;
+          }
+        }
       }
       const rev = (p as any).revenue;
       if (rev && rev > 0) meta.daily_revenue = Math.round(rev);
@@ -108,6 +106,14 @@ export async function processUpload(
       if (bs && bs > 0) meta.brand_score = bs;
       const tg = (p as any).tags;
       if (tg) meta.tags = tg;
+      const ac = (p as any).avg_cost;
+      if (ac && ac > 0) meta.avg_cost = Math.round(ac);
+      const rt = (p as any).rating;
+      if (rt && rt > 0) meta.rating = rt;
+      const ot = (p as any).open_time;
+      if (ot) meta.open_time = ot;
+      const pk = (p as any).parking;
+      if (pk) meta.parking = pk;
       if (Object.keys(meta).length > 0) row.metadata = meta;
     }
     batch.push(row);
@@ -157,7 +163,7 @@ export async function processUpload(
 }
 
 export async function getProjectSummary(projectId: string) {
-  const project = await db.oneOrNone("SELECT * FROM analysis_projects WHERE id = $1 AND deleted_at IS NULL", [projectId]);
+  const project = await db.oneOrNone("SELECT id, name, source_crs, point_count, status, created_at, is_temporary FROM analysis_projects WHERE id = $1 AND deleted_at IS NULL", [projectId]);
   if (!project) return null;
 
   const stats = await db.one(
@@ -175,6 +181,7 @@ export async function getProjectSummary(projectId: string) {
 
   return {
     id: project.id, name: project.name, sourceCrs: project.source_crs, status: project.status, createdAt: project.created_at,
+    isTemporary: project.is_temporary || false,
     stats: {
       pointCount: stats.point_count,
       bounds: { minLng: parseFloat(stats.min_lng), maxLng: parseFloat(stats.max_lng), minLat: parseFloat(stats.min_lat), maxLat: parseFloat(stats.max_lat) },

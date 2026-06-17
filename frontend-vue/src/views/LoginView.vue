@@ -29,9 +29,20 @@
             <div class="captcha-img" v-html="captchaSvg" @click="refreshCaptcha" title="点击刷新"></div>
           </div>
         </div>
+        <!-- 注册协议勾选 -->
+        <div v-if="mode === 'register'" class="consent-field">
+          <label class="consent-label">
+            <input type="checkbox" v-model="agreedToTerms" class="consent-checkbox" />
+            <span class="consent-text">
+              我已阅读并同意
+              <router-link to="/legal/privacy" target="_blank">《隐私政策》</router-link>和
+              <router-link to="/legal/terms" target="_blank">《服务协议》</router-link>
+            </span>
+          </label>
+        </div>
         <div v-if="error" class="error-msg">{{ error }}</div>
         <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
-        <button class="btn btn-primary btn-block login-submit" :disabled="submitting">
+        <button class="btn btn-primary btn-block login-submit" :disabled="submitting || (mode === 'register' && !agreedToTerms)">
           {{ submitting ? '处理中...' : mode === 'login' ? '登录' : '注册' }}
         </button>
         <p v-if="mode === 'login'" class="link-text">
@@ -112,6 +123,7 @@ const submitting = ref(false)
 // OTP state
 const showVerify = ref(false)
 const otpCode = ref('')
+const agreedToTerms = ref(false)
 const verifying = ref(false)
 
 // Forgot password state
@@ -157,6 +169,7 @@ async function submit() {
         password: password.value,
         captchaId: captchaId.value,
         captchaCode: captchaCode.value,
+        agreedToTerms: mode.value === 'register' ? true : undefined,
       })
       if (data.requiresVerification) {
         showVerify.value = true
@@ -165,17 +178,20 @@ async function submit() {
       }
       authStore.setAuth(data.accessToken, data.user)
       show('注册成功', 'success')
-      router.push({ name: 'upload' })
+      const t1 = data.user.subscriptionTier === 'pro' ? 'upload' : 'quick-analysis'
+      router.push({ name: t1 })
     } else {
       const { data } = await axios.post('/api/auth/login', {
         email: email.value.trim(),
         password: password.value,
         captchaId: captchaId.value,
         captchaCode: captchaCode.value,
+        agreedToTerms: mode.value === 'register' ? true : undefined,
       })
       authStore.setAuth(data.accessToken, data.user)
       show('登录成功', 'success')
-      router.push({ name: 'upload' })
+      const t2 = data.user.subscriptionTier === 'pro' ? 'upload' : 'quick-analysis'
+      router.push({ name: t2 })
     }
   } catch (e: any) {
     error.value = e.response?.data?.error || '操作失败'
@@ -196,7 +212,8 @@ async function verifyEmail() {
     })
     authStore.setAuth(data.accessToken, data.user)
     show('注册成功！', 'success')
-    router.push({ name: 'upload' })
+    const t3 = data.user.subscriptionTier === 'pro' ? 'upload' : 'quick-analysis'
+    router.push({ name: t3 })
   } catch (e: any) {
     error.value = e.response?.data?.error || '验证失败'
   } finally {
@@ -213,6 +230,8 @@ async function resendOtp() {
       password: password.value,
       captchaId: captchaId.value,
       captchaCode: captchaCode.value,
+      agreedToTerms: true,
+        agreedToTerms: mode.value === 'register' ? true : undefined,
     })
     successMsg.value = '验证码已重新发送，请查收邮件'
     refreshCaptcha()
@@ -408,4 +427,21 @@ onMounted(() => {
 .forgot-section form {
   text-align: left;
 }
+
+.login-legal {
+  margin-top: var(--space-4);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  display: flex; justify-content: center; gap: var(--space-2);
+}
+.login-legal a { color: var(--color-text-tertiary); text-decoration: none; }
+.login-legal a:hover { color: var(--color-accent); text-decoration: underline; }
+
+/* 注册协议勾选 */
+.consent-field { margin-bottom: var(--space-4); }
+.consent-label { display: flex; align-items: flex-start; gap: var(--space-2); cursor: pointer; font-size: var(--text-sm); color: var(--color-text-secondary); }
+.consent-checkbox { margin-top: 2px; flex-shrink: 0; accent-color: var(--color-accent); width: 16px; height: 16px; }
+.consent-text a { color: var(--color-accent); text-decoration: none; }
+.consent-text a:hover { text-decoration: underline; }
 </style>

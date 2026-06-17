@@ -1,11 +1,12 @@
 <template>
   <div class="site-workbench">
     <div class="workbench-hero">
-      <h1>选址决策建议引擎</h1>
+      <h1>快速选址分析</h1>
       <p>选择行业和区域，在地图上标注候选点位，获取基于真实市场数据的选址建议</p>
+      <p class="workbench-disclaimer">基于平台公开POI数据，无需上传即可评估候选点位</p>
     </div>
 
-    <ConsentModal v-if="!consented" @agree="consented = true" />
+    <ConsentModal v-if="!consented" @agree="onConsentAgree" />
 
     <template v-if="consented">
       <div class="workbench-grid">
@@ -182,6 +183,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useIndustryStore } from '@/stores/industry'
 import { useProjectStore } from '@/stores/project'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { useAmap } from '@/composables/useAmap'
 import { getIndustries, getSiteOptimization, solveGame, getCoverage, getHuffParams } from '@/api'
@@ -197,11 +199,16 @@ import ConsentModal from '@/components/shared/ConsentModal.vue'
 const router = useRouter()
 const industryStore = useIndustryStore()
 const projectStore = useProjectStore()
+const authStore = useAuthStore()
 const { show } = useToast()
 const { loadScript, initMap, addMarkers, clearOverlays, fitBounds, getMap } = useAmap()
 
 // ── Consent ──
-const consented = ref(false)
+const consented = ref(localStorage.getItem('analysis_consented') === 'true')
+function onConsentAgree() {
+  consented.value = true
+  localStorage.setItem('analysis_consented', 'true')
+}
 
 // ── Config ──
 const industry = ref('')
@@ -343,9 +350,21 @@ async function runAnalysis() {
 
     // 2) Run site scoring
     const weights = { distanceWeight: 0.4, blindSpotWeight: 0.35, densityWeight: 0.25 }
-    const projectId = 'f264aa38-2607-4f7b-bb17-1f4ff89233df' // 西安门店项目
+    // Create temporary project
+    const createResp = await fetch('/api/web/quick-analysis/create-project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authStore.accessToken },
+      body: JSON.stringify({ industry: industry.value, city: city.value, district: district.value, candidates: candidates.value }),
+    });
+    if (!createResp.ok) {
+      const errData = await createResp.json().catch(() => ({}));
+      throw new Error(errData.error || '创建分析项目失败')
+    }
+    const { projectId: realPid } = await createResp.json();
+    projectId.value = realPid;
+
     const siteResult = await getSiteOptimization(
-      projectId, // auto-use existing project — real flow would create a project
+      realPid,
       candidates.value,
       weights,
       candidates.value.length,
@@ -371,7 +390,7 @@ async function runAnalysis() {
         id: c.name, lng: c.lng, lat: c.lat, area: 100, brand: 0.5, name: c.name,
       }))
       gameResult.value = await solveGame(
-        projectId,
+        realPid,
         gameCands,
         [], // follower pool would come from platform POI
         Math.min(candidates.value.length, 3),
@@ -401,9 +420,12 @@ function resetAnalysis() {
 }
 
 // ── Report ──
-function goReport() {
-  // For now redirect to UploadView's report flow; will be replaced by dedicated report route
-  router.push({ name: 'report', params: { id: projectId.value || 'demo' } })
+async function goReport() {
+  if (!projectId.value) {
+    show('请先执行分析后再导出报告', 'info')
+    return
+  }
+  router.push({ name: 'report', params: { id: projectId.value } })
 }
 
 // ── Evidence panels ──
@@ -432,6 +454,7 @@ onMounted(async () => {
 .workbench-hero { text-align: center; margin-bottom: var(--space-6); }
 .workbench-hero h1 { font-size: var(--text-2xl); font-weight: var(--font-bold); margin-bottom: var(--space-2); }
 .workbench-hero p { color: var(--color-text-secondary); font-size: var(--text-sm); max-width: 540px; margin: 0 auto; }
+.workbench-disclaimer { font-size: var(--text-xs); color: var(--color-text-tertiary); margin-top: var(--space-1); font-style: italic; }
 
 .workbench-grid { display: grid; grid-template-columns: 360px 1fr; gap: 0; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--color-border); min-height: 550px; }
 

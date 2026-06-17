@@ -19,6 +19,7 @@ services:
       - ./database/migrations/012_huff_params_cache.sql:/docker-entrypoint-initdb.d/06_huff_params.sql
       - ./database/migrations/013_seed_huff_benchmarks.sql:/docker-entrypoint-initdb.d/07_huff_benchmarks.sql
       - ./database/migrations/014_jwt_signing_keys.sql:/docker-entrypoint-initdb.d/08_jwt_keys.sql
+      - ./database/migrations/019_quick_analysis_project.sql:/docker-entrypoint-initdb.d/09_quick_analysis.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d region_analysis"]
       interval: 5s

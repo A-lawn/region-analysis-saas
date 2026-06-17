@@ -23,6 +23,7 @@ try {
 import 'express-async-errors';
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import path from "path";
 import { config } from "./config";
 import { testConnection } from "./db";
@@ -42,6 +43,7 @@ app.set('trust proxy', 1);
 
 const allowedOrigin = process.env.APP_URL || "http://localhost:8080";
 app.use(cors({ origin: allowedOrigin, credentials: true }));
+app.use(helmet());
 app.use(globalLimiter);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -105,6 +107,7 @@ app.get("/api/web/projects/:id/export/report", authRequired, async (req, res) =>
 
     const projectId = req.params.id;
     const summary = await getProjectSummary(projectId);
+    const projectType = summary?.isTemporary ? 'temporary' : 'normal';
     if (!summary) { res.status(404).json({ error: "项目不存在" }); return; }
 
     const industry = (req.query.industry as string) || summary.industry || undefined;
@@ -117,6 +120,7 @@ app.get("/api/web/projects/:id/export/report", authRequired, async (req, res) =>
 
     const report: any = {
       summary,
+      projectType,
       generatedAt: new Date().toISOString(),
     };
 
@@ -216,6 +220,23 @@ async function start() {
         logger.error({ err }, "Backup cleanup failed")
       );
     }, 24 * 3600 * 1000);
+
+    // Clean expired pending users (OTP expired > 24h ago) — run now and every hour
+    const cleanPendingUsers = async () => {
+      try {
+        const { default: db2 } = await import("./db");
+        const result = await db2.result(
+          "DELETE FROM users WHERE status = 'pending' AND otp_expires_at < NOW() - INTERVAL '24 hours'"
+        );
+        if (result.rowCount > 0) {
+          logger.info({ deleted: result.rowCount }, "Cleaned expired pending users");
+        }
+      } catch (err: any) {
+        logger.error({ err }, "Pending user cleanup failed");
+      }
+    };
+    cleanPendingUsers();
+    setInterval(cleanPendingUsers, 60 * 60 * 1000);
     logger.info({ dir: config.backup.dir, retentionDays: config.backup.retentionDays }, "Backup system initialized");
   } catch (err: any) {
     logger.error({ err }, "Backup system initialization failed");

@@ -1,7 +1,7 @@
 <template>
   <div class="report-view">
     <div class="report-header no-print">
-      <button class="btn-back" @click="router.push({ name: 'dashboard', params: { id: projectId } })">
+      <button class="btn-back" @click="goBack">
         <AppIcon name="chevron-left" :size="16" />返回
       </button>
       <h2 class="no-print">分析报告</h2><h2 class="print-only">区域数据分析平台 — 分析报告</h2>
@@ -146,6 +146,7 @@ const industryStore = useIndustryStore()
 const loading = ref(true)
 const error = ref('')
 const report = ref<any>(null)
+const projectType = ref<'temporary' | 'normal'>('normal')
 const siteData = ref<any>(null)
 
 const fmtDate = computed(() => report.value?.generatedAt ? new Date(report.value.generatedAt).toLocaleString() : '')
@@ -189,11 +190,20 @@ function formatBenchValue(bm: any): string {
 
 function doPrint() { window.print() }
 
+function goBack() {
+  if (projectType.value === 'temporary') {
+    router.push({ name: 'quick-analysis' })
+  } else {
+    router.push({ name: 'dashboard', params: { id: projectId } })
+  }
+}
+
 onMounted(async () => {
   try {
     await industryStore.fetchIndustries()
     const { data } = await apiClient.get('/projects/' + projectId + '/export/report')
     report.value = data
+      projectType.value = data.projectType || 'normal'
     try {
       const stored = sessionStorage.getItem('site_data_' + projectId)
       if (stored) siteData.value = JSON.parse(stored)

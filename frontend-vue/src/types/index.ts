@@ -292,3 +292,7 @@ export interface IndustryListItem {
   radiusMeters: number
 }
 
+
+export interface SystemConfig {
+  subscriptionMode: "tiered" | "full_access"
+}

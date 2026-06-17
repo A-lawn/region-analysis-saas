@@ -6,7 +6,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'site-workbench',
+      name: 'quick-analysis',
       component: () => import('@/views/SiteWorkbenchView.vue'),
       meta: { requiresAuth: true },
     },
@@ -42,10 +42,34 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/pricing',
+      name: 'pricing',
+      component: () => import('@/views/PricingView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/apikeys',
       name: 'apikeys',
       component: () => import('@/views/ApiKeysView.vue'),
       meta: { requiresAuth: true },
+    },
+    {
+      path: '/legal/privacy',
+      name: 'privacy',
+      component: () => import('@/views/legal/PrivacyPolicyView.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
+      path: '/legal/terms',
+      name: 'terms',
+      component: () => import('@/views/legal/TermsOfServiceView.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
+      path: '/legal/datasource',
+      name: 'datasource',
+      component: () => import('@/views/legal/DataSourceView.vue'),
+      meta: { requiresAuth: false },
     },
   ],
 })
