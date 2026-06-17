@@ -130,3 +130,111 @@ ON CONFLICT (config_key) DO NOTHING;
 | GET | `/api/web/system/config` | 否 | 获取全局订阅模式 |
 | POST | `/api/web/quick-analysis/create-project` | 是 | 快速分析创建临时项目 |
 | GET | `/api/auth/me` | 是 | 当前用户信息（含 subscriptionTier） |
+
+---
+
+## 三、上传列自动检测扩展 (2026-06-17 第三批)
+
+### 新增检测字段
+
+| 检测字段 | 匹配关键词 | 写入 metadata |
+|---------|-----------|--------------|
+| 面积 | 面积/平方米/floor_area/sqm/m² | `floor_area` |
+| 人均消费 | 人均消费/客单价/avg_cost | `avg_cost` |
+| 评分 | 评分/星级/rating/score/star | `rating` |
+| 品牌分 | 品牌分/brand_score | `brand_score` |
+| 营业时间 | 营业时间/opentime/open_time | `open_time` |
+| 停车位 | 停车位/parking | `parking` |
+| 标签 | 标签/tags/特色 | `tags` |
+
+### 用户体验
+
+- 用户上传时仅需确认 **名称/地址/经度/纬度/类别** 5 个核心列
+- 其余扩展列自动识别、自动写入 spatial_points.metadata
+- 后端 `/upload/analyze` 返回完整 13 字段 detectedColumns
+
+---
+
+## 四、两级行业分类模型
+
+### 问题
+
+用户上传数据中类别字段为细粒度子类（如"火锅""小吃""快餐"），但系统只认粗粒度行业码（如 `restaurant`），导致：
+- 覆盖分析按大类筛选正常
+- 但细粒度信息丢失，无法精准竞品筛选
+
+### 方案
+
+```
+用户上传: "火锅" / "小吃" / "快餐"
+    ↓ normalizeIndustry()
+metadata.industry    = "restaurant"    ← 系统大类，覆盖分析用
+metadata.sub_category = "火锅"       ← 用户原始输入，精准筛选用
+```
+
+### 改动
+
+| 文件 | 变更 |
+|------|------|
+| `industry.config.ts` | `INDUSTRY_CATEGORY_MAP` 扩展到 100+ 关键词；新增 `normalizeIndustry()` |
+| `projectService.ts` | 用 `normalizeIndustry()` 替换手工 if-else 映射 |
+
+### 映射示例
+
+| 用户输入 | industry | sub_category |
+|---------|----------|-------------|
+| 火锅 | restaurant | 火锅 |
+| 小吃 | restaurant | 小吃 |
+| 茶饮 | beverage | 茶饮 |
+| 便利店 | convenience | 便利店 |
+| 西餐 | restaurant | 西餐 |
+| 烘焙 | restaurant | 烘焙 |
+
+---
+
+## 五、注册安全加固
+
+| 层级 | 防护措施 |
+|------|---------|
+| HTTP | helmet 安全头（XSS/点击劫持/MIME嗅探） |
+| 速率 | globalRegisterCap 20/min 全局上限 |
+| 速率 | registerLimiter 5/min/(IP+邮箱) |
+| 邮箱 | 一次性邮箱域名黑名单 38 个 |
+| 原子性 | verify-email db.tx 事务防僵尸激活 |
+| 异步 | 注册邮件 fire-and-forget，不阻塞响应 |
+| 清理 | pending 用户 TTL 24h 定时清理 |
+| 防枚举 | 登录统一错误信息；注册引导去登录 |
+| 锁定 | 5次登录失败锁 15 分钟 |
+
+### 数据库
+
+- `users` 表新增字段：`terms_agreed_at`、`terms_version`、`agreement_ip`、`agreement_ua`
+- 注册时强制勾选协议，记录 IP/UA 用于合规存证
+- 隐私政策更新：新增 IP/UA 采集说明
+
+### 迁移
+
+- `database/migrations/018_user_consent.sql` — users 表新增协议记录字段
+
+---
+
+## 六、测试数据
+
+| 文件 | 说明 |
+|------|------|
+| `sample-data/sample_xian_restaurant_50.csv` | 65 条记录，9 个餐饮品类，含日营业额/面积 |
+| `sample-data/sample_xian_restaurant_v2.csv` | 55 条记录，13 列全字段（面积/人均/评分/品牌分/营业时间/停车位/标签） |
+
+---
+
+## 新增/修改文件汇总（第三批）
+
+| 文件 | 说明 |
+|------|------|
+| `backend/src/utils/columnDetector.ts` | 扩展列检测（面积/人均/评分/停车位等） |
+| `backend/src/config/industry.config.ts` | 100+ 关键词 + normalizeIndustry() |
+| `backend/src/services/projectService.ts` | 归一化映射 + metadata.sub_category |
+| `backend/src/middleware/rateLimit.ts` | 全局注册上限 + 邮箱维度限流 |
+| `backend/src/index.ts` | helmet 安全头 + pending 定时清理 |
+| `database/init.sql` / `init_v3_1.sql` | users 表新增协议字段 |
+| `database/migrations/018_user_consent.sql` | 协议记录字段迁移 |
