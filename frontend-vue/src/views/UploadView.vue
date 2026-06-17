@@ -1,11 +1,14 @@
-﻿<template>
+<template>
   <div class="upload-view">
     <div class="hero">
-      <h1>上传数据，开始分析</h1>
-      <p>支持 Excel (.xlsx, .xls, .csv) 格式，智能识别列名</p>
+      <h1 v-if="authStore.isPro || configStore.isFullAccessMode">上传数据，开始分析</h1>
+      <h1 v-else>我的数据</h1>
+      <p v-if="authStore.isPro || configStore.isFullAccessMode">支持 Excel (.xlsx, .xls, .csv) 格式，智能识别列名</p>
+      <p v-else>查看分析记录和历史项目</p>
     </div>
 
-    <div class="upload-card">
+    <UpgradeBanner v-if="!configStore.isFullAccessMode && !authStore.isPro" />
+    <div v-if="authStore.isPro || configStore.isFullAccessMode" class="upload-card">
       <!-- Timeline step 1: CRS -->
       <div class="step" :class="{ 'step-active': !uploadData, 'step-done': !!uploadData }">
         <div class="step-marker">
@@ -115,7 +118,7 @@
             v-for="p in visibleProjects"
             :key="p.id"
             class="project-card"
-            @click="router.push({ name: 'dashboard', params: { id: p.id } })"
+            @click="goToProject(p)"
           >
             <div class="project-card-icon">
               <AppIcon name="chart" :size="18" />
@@ -243,7 +246,34 @@
                 </div>
               </div>
               <div v-if="projectStore.deletedProjects.length > 0" class="sheet-footer">
-                备份文件将在 {{ retentionDays }} 天后自动清理
+                <button
+                  class="btn btn-sm btn-danger-solid"
+                  style="width:100%"
+                  @click="showPurgeAllConfirm = true"
+                >
+                  <AppIcon name="trash" :size="14" />
+                  一键清理全部 ({{ projectStore.deletedProjects.length }} 项)
+                </button>
+                <span style="margin-top: var(--space-2); display: block;">备份文件将在 {{ retentionDays }} 天后自动清理</span>
+                </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- Purge All Confirm Sheet -->
+      <Teleport to="#app-root">
+        <Transition name="sheet">
+          <div v-if="showPurgeAllConfirm" class="sheet-overlay" @click.self="showPurgeAllConfirm = false">
+            <div class="delete-confirm-panel">
+              <div class="delete-confirm-icon">
+                <AppIcon name="alert" :size="24" color="var(--color-error)" />
+              </div>
+              <p class="delete-confirm-title">清空回收站</p>
+              <p class="delete-confirm-danger">将永久删除回收站中的全部 {{ projectStore.deletedProjects.length }} 个项目，此操作不可恢复</p>
+              <div class="delete-confirm-actions">
+                <button class="btn btn-cancel" @click="showPurgeAllConfirm = false">取消</button>
+                <button class="btn btn-delete btn-delete-danger" @click="doPurgeAll">确认清空</button>
               </div>
             </div>
           </div>
@@ -261,12 +291,8 @@
               <p class="delete-confirm-title">永久删除项目</p>
               <p class="delete-confirm-name">{{ showPurgeConfirm.projectName }}</p>
               <p class="delete-confirm-danger">此操作不可逆，所有关联数据将被永久删除</p>
-              <label class="delete-confirm-checkbox">
-                <input type="checkbox" v-model="purgeRemoveBackup" />
-                同时删除备份文件
-              </label>
               <div class="delete-confirm-actions">
-                <button class="btn btn-cancel" @click="showPurgeConfirm = null; purgeRemoveBackup = false">取消</button>
+                <button class="btn btn-cancel" @click="showPurgeConfirm = null">取消</button>
                 <button class="btn btn-delete btn-delete-danger" @click="doPurgeProject">确认删除</button>
               </div>
             </div>
@@ -282,6 +308,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useProjectStore } from '@/stores/project'
+import { useAuthStore } from '@/stores/auth'
+import { useConfigStore } from '@/stores/config'
 import type { CrsType, UploadResult, DeletedProject } from '@/types'
 import { uploadFile, confirmUpload as confirmUploadApi, listProjects } from '@/api'
 import CrsSelector from '@/components/upload/CrsSelector.vue'
@@ -289,10 +317,13 @@ import FileDropZone from '@/components/upload/FileDropZone.vue'
 import ColumnMapper from '@/components/upload/ColumnMapper.vue'
 import DataPreviewTable from '@/components/upload/DataPreviewTable.vue'
 import AppIcon from '@/components/shared/AppIcon.vue'
+import UpgradeBanner from '@/components/shared/UpgradeBanner.vue'
 
 const router = useRouter()
 const { show } = useToast()
 const projectStore = useProjectStore()
+const authStore = useAuthStore()
+const configStore = useConfigStore()
 
 const sourceCrs = ref<CrsType>('gcj02')
 const uploading = ref(false)
@@ -313,9 +344,10 @@ const loadingProjects = ref(false)
 // Recycle bin state
 const showDeleteConfirm = ref<any>(null)
 const showRecycleBin = ref(false)
+const showPurgeAllConfirm = ref(false)
 const showPurgeConfirm = ref<DeletedProject | null>(null)
-const purgeRemoveBackup = ref(false)
 const restoringId = ref<string | null>(null)
+const purgeRemoveBackup = ref(false)
 const retentionDays = ref(180)
 const totalProjects = ref(0)
 const currentPage = ref(1)
@@ -387,7 +419,8 @@ async function confirmUpload() {
     })
     if (result.projectId) {
       show('成功导入 ' + result.rowsInserted + ' 条数据', 'success')
-      router.push({ name: 'dashboard', params: { id: result.projectId } })
+      const dest = authStore.isPro || configStore.isFullAccessMode ? 'dashboard' : 'report'
+        router.push({ name: dest, params: { id: result.projectId } })
     } else if (result.errors?.length) {
       importError.value = result.errors.join('; ')
     }
@@ -421,6 +454,14 @@ async function loadProjects(page = 1) {
 
 // Debounced search
 let searchTimer: ReturnType<typeof setTimeout>
+function goToProject(p: any) {
+  if (authStore.isPro || configStore.isFullAccessMode) {
+    router.push({ name: 'dashboard', params: { id: p.id } })
+  } else {
+    router.push({ name: 'report', params: { id: p.id } })
+  }
+}
+
 function onSearchInput(e: Event) { projectFilter.value = (e.target as HTMLInputElement).value
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
@@ -473,12 +514,21 @@ async function doPurgeProject() {
   const d = showPurgeConfirm.value
   showPurgeConfirm.value = null
   try {
-    await projectStore.purgeDeletedProject(d.projectId, purgeRemoveBackup.value)
-    show('项目已永久删除', 'success')
+    await projectStore.purgeDeletedProject(d.projectId)
   } catch (e: any) {
     show(e.message || '删除失败', 'error')
-  } finally {
-    purgeRemoveBackup.value = false
+  }
+}
+
+async function doPurgeAll() {
+  showPurgeAllConfirm.value = false
+  const count = projectStore.deletedProjects.length
+  try {
+    await projectStore.purgeAllDeletedProjects()
+    show(`已清理 ${count} 个项目`, 'success')
+    showRecycleBin.value = false
+  } catch (e: any) {
+    show(e.message || '清理失败', 'error')
   }
 }
 
@@ -1165,8 +1215,3 @@ onMounted(async () => {
   margin: 0;
 }
 </style>
-
-
-
-
-

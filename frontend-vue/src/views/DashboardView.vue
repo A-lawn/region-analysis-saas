@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="dashboard-view">
     <div v-if="loading" class="loading-overlay">
       <div class="spinner"></div>
@@ -60,15 +60,15 @@
           <div class="panel-content">
             <Transition name="panel-fade" mode="out-in">
               <CoveragePanel v-if="activeTab === 'coverage'" :project-id="projectId" @result="handleCoverage" :key="'coverage'" />
-              <HeatmapPanel v-else-if="activeTab === 'heatmap'" :project-id="projectId" @result="handleHeatmap" :key="'heatmap'" />
+              <HeatmapPanel v-else-if="activeTab === 'heatmap'" :project-id="projectId" :industry="detectedIndustry" @result="handleHeatmap" :key="'heatmap'" />
               <ClusterPanel v-else-if="activeTab === 'cluster'" :project-id="projectId" @result="handleCluster" :key="'cluster'" />
-              <SiteOptimizationPanel v-else-if="activeTab === 'site'" :project-id="projectId" :clicked-candidate="siteClickPoint" @result="handleSite" :key="'site'" />
+              <SiteOptimizationPanel v-else-if="activeTab === 'site'" :project-id="projectId" :clicked-candidate="siteClickPoint" @result="handleSite" @markers-update="(g: any) => siteMarkerGroups = g" :key="'site'" />
               <H3HexagonPanel v-else-if="activeTab === 'h3'" :project-id="projectId" @result="handleH3" :key="'h3'" />
             </Transition>
           </div>
         </aside>
         <main class="map-area">
-          <MapContainer :points="validPoints" :click-enabled="clickEnabled" @ready="onMapReady" @map-click="handleMapClick" />
+          <MapContainer :points="activeTab === 'site' ? [] : validPoints" :marker-groups="siteMarkerGroups" :click-enabled="clickEnabled" @ready="onMapReady" @map-click="handleMapClick" />
         </main>
       </div>
     </template>
@@ -108,8 +108,24 @@ const loading = ref(true)
 const activeTab = ref('coverage')
 const mapInstance = ref<any>(null)
 const { clearOverlays, addGeoJSONPolygons, addHeatmapLayer, addCircles, addMarkers, addPolygons, getMap, fitBounds } = useAmap()
+const siteMarkerGroups = ref<{ groupId: string; points: { lng: number; lat: number; name?: string; label?: string; color?: string }[] }[]>([])
 const siteClickPoint = ref<{ lng: number; lat: number } | null>(null)
 const clickEnabled = computed(() => activeTab.value === 'site')
+const detectedIndustry = computed(() => {
+  const pts = projectStore.validPoints
+  if (!pts || pts.length === 0) return undefined
+  const counts: Record<string, number> = {}
+  for (const p of pts) {
+    const ind = p.metadata?.industry as string
+    if (ind) counts[ind] = (counts[ind] || 0) + 1
+  }
+  let best: string | undefined
+  let max = 0
+  for (const [k, v] of Object.entries(counts)) {
+    if (v > max) { max = v; best = k }
+  }
+  return best
+})
 
 const summary = computed(() => projectStore.currentSummary)
 const validPoints = computed(() => projectStore.validPoints)
@@ -123,7 +139,7 @@ const tabs = [
 ] as const
 
 function switchTab(key: string) {
-  clearOverlays()
+  clearOverlays(); siteMarkerGroups.value = []
   activeTab.value = key
 }
 
@@ -140,7 +156,7 @@ function goReport() {
 }
 
 function handleCoverage(data: any, voronoiData?: any) {
-  clearOverlays()
+  clearOverlays(); siteMarkerGroups.value = []
   if (!data) return
   // If data is a task response (queued), ignore it
   if (data.taskId && data.status === 'queued') return
@@ -250,21 +266,21 @@ function voronoiPalette(): string[][] {
     ['rgba(52,120,246,0.18)', '#3478F6'], ['rgba(48,219,176,0.18)', '#30DBB0'],
   ]
 }
-function handleHeatmap(data: { points: HeatmapPoint[] }) {
-  clearOverlays()
-  if (data.points?.length) addHeatmapLayer(data.points)
+function handleHeatmap(data: { points: HeatmapPoint[] }, bandwidthM = 1000) {
+  clearOverlays(); siteMarkerGroups.value = []
+  if (data.points?.length) addHeatmapLayer(data.points, { bandwidthM })
   else show('热力图数据为空', 'info')
 }
 
 function handleCluster(data: ClusterResult) {
-  clearOverlays()
+  clearOverlays(); siteMarkerGroups.value = []
   if (!data.clusters?.length) { show('未检测到聚类', 'info'); return }
   const map = getMap()
   if (!map) return
   const AMap = (window as any).AMap
   data.clusters.forEach((c: any) => {
     const r = Math.min(c.pointCount * 2 + 10, 50)
-    const html = '<div style="width:' + (r * 2) + 'px;height:' + (r * 2) + 'px;border-radius:50%;background:rgba(0,122,255,0.3);border:2px solid #007AFF;display:flex;align-items:center;justify-content:center;color:#007AFF;font-size:11px;font-weight:bold;pointer-events:none">' + c.pointCount + '</div>'
+    const html = '<div style="width:' + (r * 2) + 'px;height:' + (r * 2) + 'px;border-radius:50%;background:rgba(0,122,255,0.3);border:2px solid #007AFF;display:flex;align-items:center;justify-content:center;color:#007AFF;font-size: 11px; /* Apple HIG caption */font-weight:bold;pointer-events:none">' + c.pointCount + '</div>'
     const marker = new AMap.Marker({
       position: [c.center.lng, c.center.lat],
       content: html,
@@ -276,18 +292,18 @@ function handleCluster(data: ClusterResult) {
   show('聚类分析完成: ' + data.clusters.length + ' 个聚类', 'success')
 }
 
-function handleSite(data: SiteOptimizationResult) {
-  clearOverlays()
+function handleSite(data: any) {
+  clearOverlays(); siteMarkerGroups.value = []
   if (!data.candidates?.length) { show('未找到候选位置', 'info'); return }
   const colors = [getComputedStyle(document.documentElement).getPropertyValue('--color-error').trim() || '#FF3B30',
     getComputedStyle(document.documentElement).getPropertyValue('--color-warning').trim() || '#FF9500', '#FF9500',
     getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#007AFF', '#007AFF']
-  addMarkers(data.candidates.map((c, i) => ({ lng: c.lng, lat: c.lat, label: c.name + ' ' + c.score, color: colors[i] || '#007AFF', name: c.name + ' ' + c.score })))
+  addMarkers(data.candidates.map((c: any, i: number) => ({ lng: c.lng, lat: c.lat, label: c.name + ' ' + c.score, color: colors[i] || '#007AFF', name: c.name + ' ' + c.score })))
   fitBounds(data.candidates.map((c: any) => ({ lng: c.lng, lat: c.lat })))
 }
 
 async function handleH3(data: any) {
-  clearOverlays()
+  clearOverlays(); siteMarkerGroups.value = []
   if (!data.hexagons?.length) { show('等值区域数据为空', 'info'); return }
   try {
     const h3 = await import('h3-js')

@@ -23,6 +23,7 @@ try {
 import 'express-async-errors';
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import path from "path";
 import { config } from "./config";
 import { testConnection } from "./db";
@@ -38,9 +39,11 @@ import { ensureBackupDir, cleanExpiredBackups } from "./services/backupService";
 import { globalLimiter } from "./middleware/rateLimit";
 
 const app = express();
+app.set('trust proxy', 1);
 
 const allowedOrigin = process.env.APP_URL || "http://localhost:8080";
 app.use(cors({ origin: allowedOrigin, credentials: true }));
+app.use(helmet());
 app.use(globalLimiter);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -93,22 +96,96 @@ app.get("/api/health/readiness", async (_req, res) => {
 });
 
 
-// 4.11 Report export - returns JSON with all analysis data for frontend rendering
+// 4.11 Report export — full analysis report with industry-aware insights
 app.get("/api/web/projects/:id/export/report", authRequired, async (req, res) => {
   try {
     const { getProjectSummary } = require("./services/projectService");
     const { computeCoverage, computeKDEHeatmap, computeClusters } = require("./services/spatialAnalysis");
+    const { generateAdvice } = require("./services/decisionEngine");
+    const { compareWithBenchmarks } = require("./services/analysis/benchmarkService");
+    const { loadIndustryConfig } = require("./services/analysis/industryLoader");
+
     const projectId = req.params.id;
     const summary = await getProjectSummary(projectId);
+    const projectType = summary?.isTemporary ? 'temporary' : 'normal';
     if (!summary) { res.status(404).json({ error: "项目不存在" }); return; }
+
+    const industry = (req.query.industry as string) || summary.industry || undefined;
+
+    let industryConfig: any = null;
+    if (industry) {
+      try { industryConfig = await loadIndustryConfig(industry); } catch {}
+    }
+    const serviceRadius = industryConfig?.radiusMeters || summary.stats?.avgNeighborDistM || 1000;
 
     const report: any = {
       summary,
+      projectType,
       generatedAt: new Date().toISOString(),
     };
 
-    try { report.coverage = await computeCoverage(projectId, 3000); } catch (e: any) { report.coverage = { error: e.message }; }
-    try { report.heatmap = await computeKDEHeatmap(projectId); } catch (e: any) { report.heatmap = { error: e.message }; }
+    // ---- 1. Multi-radius Coverage ----
+    const radii = [Math.round(serviceRadius * 0.6), serviceRadius, Math.round(serviceRadius * 1.5)]
+      .filter((v, i, a) => a.indexOf(v) === i);
+    report.coverageAnalysis = { radii: [] as any[] };
+    for (const r of radii) {
+      try {
+        const cov = await computeCoverage(projectId, r, { industry, decayMode: true, includeWhiteSpace: true });
+        report.coverageAnalysis.radii.push({
+          radiusMeters: r,
+          coveredAreaSqm: cov.coveredArea,
+          effectiveCoverageRatio: cov.effectiveCoverageRatio,
+          overlapRatio: cov.triangulation?.overlapRatio,
+          gapRatio: cov.triangulation?.gapRatio,
+          cannibalizationIndex: cov.cannibalizationIndex,
+          connectivity: cov.triangulation?.coverageConnectivity,
+        });
+      } catch (e: any) {
+        report.coverageAnalysis.radii.push({ radiusMeters: r, error: e.message });
+      }
+    }
+
+    // ---- 2. Decision Advice ----
+    try {
+      const mainCov = await computeCoverage(projectId, serviceRadius, { industry });
+      report.decisionAdvice = await generateAdvice({
+        pointCount: summary.stats?.pointCount || 0,
+        triangulation: mainCov.triangulation,
+        cannibalizationIndex: mainCov.cannibalizationIndex,
+        industry,
+      });
+    } catch (e: any) {
+      report.decisionAdvice = [{ priority: "medium", message: "决策分析暂不可用: " + e.message }];
+    }
+
+    // ---- 3. Benchmark Comparison ----
+    if (industry) {
+      try {
+        const mainCov = await computeCoverage(projectId, serviceRadius, { industry });
+        report.benchmarkComparison = await compareWithBenchmarks(industry, {
+          coverageRatio: mainCov.effectiveCoverageRatio,
+          overlapRatio: mainCov.triangulation?.overlapRatio,
+          gapRatio: mainCov.triangulation?.gapRatio,
+          cannibalizationIndex: mainCov.cannibalizationIndex,
+          pointCount: summary.stats?.pointCount || 0,
+          avgNeighborDistM: summary.stats?.avgNeighborDistM || 0,
+        });
+        report.industryInfo = {
+          industry,
+          displayName: industryConfig?.displayName,
+          serviceRadiusMeters: serviceRadius,
+          kpiWeights: industryConfig?.kpiWeights || {},
+          decisionThresholds: industryConfig?.decisionThresholds || {},
+        };
+      } catch (e: any) {
+        report.benchmarkComparison = { error: e.message };
+      }
+    }
+
+    // ---- 4. Heatmap ----
+    try { report.heatmap = await computeKDEHeatmap(projectId, undefined, undefined, { industry }); } catch (e: any) { report.heatmap = { error: e.message }; }
+
+    // ---- 5. Clusters ----
     try { report.clusters = await computeClusters(projectId); } catch (e: any) { report.clusters = { error: e.message }; }
 
     res.json(report);
@@ -116,6 +193,7 @@ app.get("/api/web/projects/:id/export/report", authRequired, async (req, res) =>
     res.status(500).json({ error: err.message });
   }
 });
+
 app.get("*", (_req, res) => {
   res.sendFile(path.join(publicPath, "index.html"));
 });
@@ -142,6 +220,23 @@ async function start() {
         logger.error({ err }, "Backup cleanup failed")
       );
     }, 24 * 3600 * 1000);
+
+    // Clean expired pending users (OTP expired > 24h ago) — run now and every hour
+    const cleanPendingUsers = async () => {
+      try {
+        const { default: db2 } = await import("./db");
+        const result = await db2.result(
+          "DELETE FROM users WHERE status = 'pending' AND otp_expires_at < NOW() - INTERVAL '24 hours'"
+        );
+        if (result.rowCount > 0) {
+          logger.info({ deleted: result.rowCount }, "Cleaned expired pending users");
+        }
+      } catch (err: any) {
+        logger.error({ err }, "Pending user cleanup failed");
+      }
+    };
+    cleanPendingUsers();
+    setInterval(cleanPendingUsers, 60 * 60 * 1000);
     logger.info({ dir: config.backup.dir, retentionDays: config.backup.retentionDays }, "Backup system initialized");
   } catch (err: any) {
     logger.error({ err }, "Backup system initialization failed");

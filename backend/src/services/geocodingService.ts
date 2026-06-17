@@ -1,3 +1,4 @@
+import logger from "../utils/logger";
 import { config } from "../config";
 
 export async function geocode(address: string): Promise<{ lng: number; lat: number; formattedAddress: string } | null> {
@@ -20,7 +21,7 @@ export async function geocode(address: string): Promise<{ lng: number; lat: numb
     }
     return null;
   } catch (err) {
-    console.error("Geocoding error:", err);
+    logger.warn({ error: (err as any).message || String(err) }, "[Geocode] Failed");
     return null;
   }
 }
@@ -39,7 +40,7 @@ export async function reverseGeocode(lng: number, lat: number): Promise<string |
     }
     return null;
   } catch (err) {
-    console.error("Reverse geocoding error:", err);
+    logger.warn({ error: (err as any).message || String(err) }, "[ReverseGeocode] Failed");
     return null;
   }
 }

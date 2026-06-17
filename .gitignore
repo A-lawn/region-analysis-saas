@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 dist/
 
@@ -25,3 +25,26 @@ tmp/
 # Temp & duplicates
 temp.patch
 docs/审计与改进计计划书.md
+
+# Backups (generated data, not source)
+backend/backups/
+backups/
+
+# Python utility scripts (dev/debug artifacts)
+*.py
+!compute-engine/**/*.py
+!database/*.py
+
+# Debug/verification SQL scripts
+database/verify_*.sql
+database/fix_*.sql
+
+# Codex internal
+.codex/
+AGENTS.md
+__pycache__/
+
+# 前端构建产物 — CI构建，不上传
+public/assets/
+
+*.prof

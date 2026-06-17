@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="map-wrapper">
     <div v-if="error" class="map-error">
       <AppIcon name="alert" :size="28" color="var(--color-error)" />
@@ -20,6 +20,7 @@ import AppIcon from '@/components/shared/AppIcon.vue'
 
 const props = defineProps<{
   points: { lng: number; lat: number; name?: string }[]
+  markerGroups?: { groupId: string; points: { lng: number; lat: number; name?: string; label?: string; color?: string }[] }[]
   center?: [number, number]
   zoom?: number
   clickEnabled?: boolean
@@ -31,7 +32,7 @@ const emit = defineEmits<{
 }>()
 
 const mapId = 'map-' + Math.random().toString(36).substring(2, 8)
-const { initMap, getMap, fitBounds, clearOverlays, addClusterLayer, addMarkers } = useAmap()
+const { initMap, getMap, fitBounds, clearOverlays, addClusterLayer, addMarkers, addMarkersByGroup } = useAmap()
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -42,6 +43,7 @@ onMounted(async () => {
     const map = await initMap(mapId, props.center, props.zoom)
     emit('ready', map)
     renderPoints()
+    if (props.markerGroups && props.markerGroups.length) renderMarkerGroups()
     toggleMapClick(map, props.clickEnabled ?? false)
   } catch (e: any) {
     error.value = e.message || '地图加载失败'
@@ -63,6 +65,12 @@ function toggleMapClick(map: any, enabled: boolean) {
   }
 }
 
+function renderMarkerGroups() {
+  if (props.markerGroups && props.markerGroups.length) {
+    addMarkersByGroup(props.markerGroups)
+  }
+}
+
 function renderPoints() {
   if (!props.points.length) return
   fitBounds(props.points)
@@ -73,6 +81,14 @@ function renderPoints() {
     addMarkers(props.points)
   }
 }
+
+watch(
+  () => props.markerGroups,
+  (newVal) => {
+    if (!loading.value && newVal) renderMarkerGroups()
+  },
+  { deep: true }
+)
 
 watch(
   () => props.points,

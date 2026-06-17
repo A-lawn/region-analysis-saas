@@ -1,3 +1,4 @@
+import logger from "../utils/logger";
 ﻿// Unified error handling for the application
 
 export class AppError extends Error {
@@ -43,7 +44,7 @@ export function errorHandler(
   }
 
   // Unknown errors
-  console.error("Unhandled error:", err);
+  // Error logged by requestLogger middleware (with trace ID)
   const message = process.env.NODE_ENV === "production"
     ? "服务器内部错误"
     : err.message || "服务器内部错误";

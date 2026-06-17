@@ -2,8 +2,23 @@ import db from "../db";
 import { config } from "../config";
 import { cacheGet, cacheSet } from "./cacheService";
 import crypto from "crypto";
-import { batchCompetitionAnalysis } from "./competitionService";
-import { generateAdvice } from "./decisionEngine";
+import { batchCompetitionAnalysis, batchBusinessMetrics, BusinessMetrics } from "./competitionService";
+import { generateAdvice, generateAdviceSync } from "./decisionEngine";
+import { AppError } from "../middleware/errorHandler";
+import { batchNormalizeKpis, weightedSum } from "./analysis/kpiNormalizer";
+import type { KpiNormalizerEntry, KpiValueMap } from "./analysis/kpiNormalizer";
+
+
+// Quick industry code → Chinese display name mapping (used in error messages)
+const INDUSTRY_DISPLAY_NAMES: Record<string, string> = {
+  convenience: "便利店", beverage: "茶饮/咖啡", restaurant: "餐饮",
+  pharmacy: "药店/诊所", fresh_grocery: "生鲜超市", supermarket: "商超",
+  hotel: "酒店/住宿", medical_aesthetics: "医美/口腔", education: "教育培训",
+  pet_service: "宠物服务", auto4s: "汽车4S店", logistics: "物流/快递驿站",
+};
+function industryDisplayName(code: string): string {
+  return INDUSTRY_DISPLAY_NAMES[code] || code;
+}
 
 export interface TriangulationMetrics {
   coverageConnectivity: number;
@@ -81,7 +96,7 @@ function paramsHash(params: Record<string, any>): string {
 }
 
 async function computeConcaveHull(projectId: string, industry?: string): Promise<{ geojson: any; hullType: string; areaSqm: number }> {
-  const indWhere = industry ? ` AND metadata->>'industry' = '${industry}'` : "";
+  const indWhere = industry ? " AND metadata->>'industry' = '" + industry + "'" : "";
   const ch = await db.one(`
     SELECT
       ST_AsGeoJSON(ST_ConvexHull(ST_Collect(geom))) AS geojson,
@@ -99,7 +114,7 @@ async function computeConcaveHull(projectId: string, industry?: string): Promise
 }
 
 async function computeTriangulationMetrics(projectId: string, radiusMeters: number, industry?: string): Promise<TriangulationMetrics> {
-  const indWhere = industry ? ` AND metadata->>'industry' = '${industry}'` : "";
+  const indWhere = industry ? " AND metadata->>'industry' = '" + industry + "'" : "";
   const cacheKey = "analysis:" + projectId + ":triang:v7:" + radiusMeters + (industry ? ":ind_" + industry : "");
   return cached(cacheKey, config.cache.ttl, async () => {
     try {
@@ -167,20 +182,20 @@ async function computeTriangulationMetrics(projectId: string, radiusMeters: numb
 export async function computeCoverage(
   projectId: string,
   radiusMeters: number,
-  opts?: { decayMode?: boolean; includeWhiteSpace?: boolean; clipGeojson?: any; networkMode?: "walking" | "driving"; industry?: string }
+  opts?: { decayMode?: boolean; includeWhiteSpace?: boolean; clipGeojson?: any; networkMode?: "walking" | "driving" | "cycling" | "bus" | "subway" | "bus+subway"; industry?: string }
 ): Promise<CoverageResult> {
   const decaySuffix = (opts?.decayMode) ? ":decay" : "";
   const wsSuffix = (opts?.includeWhiteSpace) ? ":ws" : "";
   const clipSuffix = (opts?.clipGeojson) ? ":clip" : "";
   const networkSuffix = (opts?.networkMode) ? ":net_" + opts.networkMode : "";
   const industrySuffix = (opts?.industry) ? ":ind_" + opts.industry : "";
-  // Build industry filter for SQL queries
-  const industryRaw = (opts?.industry)
-    ? ` AND metadata->>\'industry\' = \'${opts.industry}\'`
-    : "";
+  // Build industry filter — safe: validates against /^[a-z_]+$/ then uses pg-promise $[industry]
+  const industry = (opts?.industry && /^[a-z_]+$/.test(opts.industry)) ? opts.industry : undefined;
+  const industryFilter = industry ? " AND metadata->>'industry' = '" + industry + "'" : "";
+
   const cacheKey = "analysis:" + projectId + ":coverage:v7:" + radiusMeters + decaySuffix + wsSuffix + clipSuffix + networkSuffix + industrySuffix;
   return cached(cacheKey, config.cache.ttl, async () => {
-    const hullResult = await computeConcaveHull(projectId, opts?.industry);
+    const hullResult = await computeConcaveHull(projectId, industry);
 
     // Early exit if hull has no geometry (e.g., no points match industry filter)
     if (!hullResult.geojson) {
@@ -189,9 +204,9 @@ export async function computeCoverage(
         [projectId]
       );
       const noDataMsg = opts?.industry
-        ? `No points found for industry "${opts.industry}"`
-        : "No spatial points in project";
-      throw new Error(noDataMsg);
+        ? `当前数据中未找到"${industryDisplayName(opts.industry || '')}"行业的门店数据，请切换为"全部行业"后重试`
+        : "该项目没有空间点位数据，请先上传数据";
+      throw new AppError(422, noDataMsg, opts?.industry ? "INDUSTRY_MISMATCH" : "NO_SPATIAL_DATA");
     }
 
     // Determine the analysis boundary
@@ -222,7 +237,7 @@ export async function computeCoverage(
     const baseResult = await db.one(`
       WITH buffers AS (
         SELECT ST_Buffer(geom::geography, $1)::geometry AS buf_geom
-        FROM spatial_points WHERE project_id = $2${industryRaw}
+        FROM spatial_points WHERE project_id = $2${industryFilter}
       ),
       unioned AS (
         SELECT ST_Union(buf_geom) AS union_geom FROM buffers
@@ -258,15 +273,15 @@ export async function computeCoverage(
         const decayResult = await db.one(`
           WITH buffers_core AS (
             SELECT ST_Buffer(geom::geography, $1)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           buffers_mid AS (
             SELECT ST_Buffer(geom::geography, $3)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           buffers_full AS (
             SELECT ST_Buffer(geom::geography, $4)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           core_union AS (SELECT ST_Union(buf_geom) AS geom FROM buffers_core),
           mid_union AS (SELECT ST_Union(buf_geom) AS geom FROM buffers_mid),
@@ -313,7 +328,7 @@ export async function computeCoverage(
         const wsResult = await db.one(`
           WITH buffers AS (
             SELECT ST_Buffer(geom::geography, $1)::geometry AS buf_geom
-            FROM spatial_points WHERE project_id = $2${industryRaw}
+            FROM spatial_points WHERE project_id = $2${industryFilter}
           ),
           unioned AS (
             SELECT ST_Union(buf_geom) AS geom FROM buffers
@@ -330,13 +345,14 @@ export async function computeCoverage(
     // ---- Triangulation KPI ----
     const triMetrics = await computeTriangulationMetrics(projectId, radiusMeters, opts?.industry);
 
+    
     // ---- Decision advice ----
     const pointCountRow = await db.oneOrNone(
-      `SELECT COUNT(*)::INTEGER AS cnt FROM spatial_points WHERE project_id = $1${industryRaw}`,
+      `SELECT COUNT(*)::INTEGER AS cnt FROM spatial_points WHERE project_id = $1${industryFilter}`,
       [projectId]
     );
     const pointCount = pointCountRow?.cnt || 0;
-    const advice = generateAdvice({ pointCount, triangulation: triMetrics });
+    const advice = await generateAdvice({ pointCount, triangulation: triMetrics, industry });
 
 // ---- Overlap layers (exclusive/double/triple+) from triangulation ----
     let overlapLayers: OverlapLayers | undefined;
@@ -401,14 +417,37 @@ export async function computeCoverage(
 
 export async function computeKDEHeatmap(
   projectId: string,
-  bandwidthMeters: number = 1000,
-  gridSizeMeters: number = 500
+  bandwidthMeters?: number,
+  gridSizeMeters?: number,
+  opts?: { industry?: string }
 ): Promise<HeatmapPoint[]> {
-  const cacheKey = `analysis:${projectId}:heatmap:${bandwidthMeters}:${gridSizeMeters}`;
+  // Load industry-specific KDE parameters
+  let effectiveBandwidth = bandwidthMeters;
+  let effectiveGridSize = gridSizeMeters;
+  let maxGridCells = 80;
+  let cutoffFactor = 3.0;
+
+  if (opts?.industry) {
+    try {
+      const { loadIndustryConfig } = require("./analysis/industryLoader");
+      const industryCfg = await loadIndustryConfig(opts.industry);
+      if (industryCfg?.analysisParams?.kde) {
+        const k = industryCfg.analysisParams.kde;
+        if (effectiveBandwidth === undefined) effectiveBandwidth = k.bandwidthM;
+        if (effectiveGridSize === undefined) effectiveGridSize = k.gridSizeM;
+        maxGridCells = k.maxGridCells ?? maxGridCells;
+        cutoffFactor = k.cutoffFactor ?? cutoffFactor;
+      }
+    } catch (e: any) {
+      console.warn("[KDE] Failed to load industry config:", e.message);
+    }
+  }
+  effectiveBandwidth = effectiveBandwidth ?? config.analysis.kdeBandwidth;
+  effectiveGridSize = effectiveGridSize ?? config.analysis.kdeGridSize;
+
+  const cacheKey = `analysis:${projectId}:heatmap:v8:${effectiveBandwidth}:${effectiveGridSize}:${opts?.industry || "none"}`;
   return cached(cacheKey, config.cache.ttl, async () => {
-    const bandwidthDeg = bandwidthMeters / 111320.0;
-    const gridSizeDeg = gridSizeMeters / 111320.0;
-    const cutoffFactor = 3.0;
+    const METERS_PER_DEG_LAT = 111320.0;
 
     const bounds = await db.one(
       "SELECT ST_XMin(ST_Collect(geom)) AS min_x, ST_XMax(ST_Collect(geom)) AS max_x, ST_YMin(ST_Collect(geom)) AS min_y, ST_YMax(ST_Collect(geom)) AS max_y FROM spatial_points WHERE project_id = $1",
@@ -423,47 +462,67 @@ export async function computeKDEHeatmap(
     );
     if (!pts || pts.length === 0) return [];
 
+    // Compute latitude-corrected bandwidths (X=lng uses cos(lat) correction)
+    const avgLatRad = pts.reduce((s: number, p: any) => s + (p.y as number), 0) / pts.length * Math.PI / 180;
+    const cosLat = Math.max(0.01, Math.cos(avgLatRad));
+    const bandwidthXLng = effectiveBandwidth / (METERS_PER_DEG_LAT * cosLat);
+    const bandwidthYLat = effectiveBandwidth / METERS_PER_DEG_LAT;
+    const gridSizeXLng = effectiveGridSize / (METERS_PER_DEG_LAT * cosLat);
+    const gridSizeYLat = effectiveGridSize / METERS_PER_DEG_LAT;
+
     if (pts.length > 3000) {
+      // Deterministic spatial-stratified downsampling
+      // Hash each point's grid cell to produce a reproducible, spatially-balanced sample
       const sampleRate = 3000 / pts.length;
-      pts = pts.filter(() => Math.random() < sampleRate);
+      const cellSizeDeg = gridSizeXLng * 4; // group 4x4 grid cells for stratification
+      pts = pts.filter((p: any) => {
+        const cx = Math.floor((p.x - minX) / cellSizeDeg);
+        const cy = Math.floor((p.y - minY) / cellSizeDeg);
+        // Deterministic hash based on cell + point index gives stable sampling
+        const h = ((cx * 0x9e3779b9 + cy * 0x517cc1b7) >>> 0) / 0xffffffff;
+        return h < sampleRate;
+      });
+      // Re-sort deterministically after filtering
+      pts.sort((a: any, b: any) => a.x - b.x || a.y - b.y);
     }
 
     const extentX = maxX - minX;
     const extentY = maxY - minY;
-    const maxGridCells = 80;
-    const gridCols = Math.min(Math.ceil(extentX / gridSizeDeg), maxGridCells);
-    const gridRows = Math.min(Math.ceil(extentY / gridSizeDeg), maxGridCells);
+    const gridCols = Math.min(Math.ceil(extentX / gridSizeXLng), maxGridCells);
+    const gridRows = Math.min(Math.ceil(extentY / gridSizeYLat), maxGridCells);
 
-    const bucketSize = bandwidthDeg * cutoffFactor;
+    const bucketSizeXLng = bandwidthXLng * cutoffFactor;
+    const bucketSizeYLat = bandwidthYLat * cutoffFactor;
     const bucketMap = new Map<string, typeof pts>();
 
     for (const p of pts) {
-      const bx = Math.floor((p.x as number - minX) / bucketSize);
-      const by = Math.floor((p.y as number - minY) / bucketSize);
+      const bx = Math.floor((p.x as number - minX) / bucketSizeXLng);
+      const by = Math.floor((p.y as number - minY) / bucketSizeYLat);
       const key = `${bx},${by}`;
       if (!bucketMap.has(key)) bucketMap.set(key, []);
       bucketMap.get(key)!.push(p);
     }
 
     const grid: { lng: number; lat: number; weight: number }[] = [];
-    const normFactor = bandwidthDeg * Math.sqrt(2 * Math.PI);
+    // Correct 2D Gaussian KDE normalization: 1/(2*pi * bw_x * bw_y)
+    const normFactor = bandwidthXLng * bandwidthYLat * 2 * Math.PI;
 
     for (let row = 0; row <= gridRows; row++) {
       for (let col = 0; col <= gridCols; col++) {
-        const gx = minX + col * gridSizeDeg;
-        const gy = minY + row * gridSizeDeg;
+        const gx = minX + col * gridSizeXLng;
+        const gy = minY + row * gridSizeYLat;
         let w = 0;
 
-        const gbx = Math.floor((gx - minX) / bucketSize);
-        const gby = Math.floor((gy - minY) / bucketSize);
+        const gbx = Math.floor((gx - minX) / bucketSizeXLng);
+        const gby = Math.floor((gy - minY) / bucketSizeYLat);
 
         for (let dbx = -1; dbx <= 1; dbx++) {
           for (let dby = -1; dby <= 1; dby++) {
             const bucket = bucketMap.get(`${gbx + dbx},${gby + dby}`);
             if (!bucket) continue;
             for (const p of bucket) {
-              const dx = (gx - (p.x as number)) / bandwidthDeg;
-              const dy = (gy - (p.y as number)) / bandwidthDeg;
+              const dx = (gx - (p.x as number)) / bandwidthXLng;
+              const dy = (gy - (p.y as number)) / bandwidthYLat;
               const distSq = dx * dx + dy * dy;
               if (distSq > cutoffFactor * cutoffFactor) continue;
               w += Math.exp(-0.5 * distSq);
@@ -519,18 +578,31 @@ export async function computeSiteOptimization(
 ): Promise<any> {
   const cacheKey = `analysis:${projectId}:siteopt:${paramsHash(options as any)}`;
   return cached(cacheKey, config.cache.ttl, async () => {
-    // E2: Load industry model with algorithm + kpi_mapping
+    // P0-2: Load industry KPI weights from kpi_weights + scoring_algorithm (unified in 010 migration)
     let algorithm: string = "weighted_sum";
     let kpiMapping: Record<string, number> | null = null;
     if (options.industry) {
       const model = await db.oneOrNone(
-        `SELECT weights FROM site_optimization_models WHERE industry = $[industry]`,
+        `SELECT kpi_weights, scoring_algorithm FROM site_optimization_models WHERE industry = $[industry]`,
         { industry: options.industry }
       );
-      if (model?.weights) {
-        const w = typeof model.weights === 'string' ? JSON.parse(model.weights) : model.weights;
-        algorithm = w.algorithm || "weighted_sum";
-        kpiMapping = w.kpi_mapping || null;
+      if (model) {
+        algorithm = model.scoring_algorithm || "weighted_sum";
+        const raw = typeof model.kpi_weights === 'string' ? JSON.parse(model.kpi_weights) : model.kpi_weights;
+        if (raw && typeof raw === 'object' && Object.keys(raw).length > 0) {
+          kpiMapping = raw;
+        }
+      }
+      // Fallback: if kpi_weights still empty, try deprecated weights.kpi_mapping
+      if (!kpiMapping) {
+        const legacy = await db.oneOrNone(
+          "SELECT weights FROM site_optimization_models WHERE industry = $[industry]",
+          { industry: options.industry }
+        );
+        if (legacy?.weights) {
+          const w = typeof legacy.weights === 'string' ? JSON.parse(legacy.weights) : legacy.weights;
+          kpiMapping = w.kpi_mapping || null;
+        }
       }
     }
     const { candidates, topK } = options;
@@ -560,6 +632,29 @@ export async function computeSiteOptimization(
 
     const compResults = await batchCompetitionAnalysis(projectId, candidates);
 
+    // 查询商业体聚合指标（public_poi.metadata：评分/消费/商圈/夜间/外卖等）
+    const businessMetricsMap = options.industry
+      ? await batchBusinessMetrics(candidates, options.industry)
+      : new Map<string, BusinessMetrics>();
+
+    // P1-2: Load KPI normalizer registry from kpi_category_map (includes normalization_type + params)
+    let kpiNormalizers: KpiNormalizerEntry[] = [];
+    try {
+      const rows = await db.manyOrNone(
+        "SELECT kpi_name, category, normalization_type, normalization_params FROM kpi_category_map"
+      );
+      for (const r of rows || []) {
+        kpiNormalizers.push({
+          kpiName: r.kpi_name,
+          category: r.category,
+          normalizationType: r.normalization_type || "linearUp",
+          normalizationParams: r.normalization_params || {},
+        });
+      }
+    } catch (e: any) {
+      console.warn("[SiteOpt] kpi_category_map load failed:", e.message);
+    }
+
     const scored = [];
     const { convertCoord } = require('../utils/coordTransform');
     for (let i = 0; i < candidates.length; i++) {
@@ -571,52 +666,119 @@ export async function computeSiteOptimization(
         wgsLng = wgs.lng;
         wgsLat = wgs.lat;
       } catch {
-        // If conversion fails, use as-is and log warning
         console.warn("[SiteOpt] CRS conversion failed for candidate:", c.name);
       }
       const comp = compResults[i] || { saturation: 'medium' as const, competitorCount500m: 0, competitorCount1000m: 0, gapRatio: 1 };
-      // Competition: penalize if competitors within 500m; 0 competitors=100, 5+=0
-      const comp_500m = comp.competitorCount500m || 0;
-      const compScore = Math.max(0, 1 - comp_500m / 5);
-      const advice = generateAdvice({});
+
+      // ---- Business metrics from public_poi ----
+      const bm: BusinessMetrics = businessMetricsMap.get(c.name) || {
+        avgRating: 0, avgCost: 0, businessAreaRatio: 0,
+        lateNightRatio: 0, deliveryRatio: 0, highRatedCount: 0,
+        medianPhotoCount: 0, taggedRatio: 0, sampleSize: 0,
+      };
+
+      // ---- Compute raw KPI values for this candidate ----
+      const rawKpis: KpiValueMap = {};
+
+      // Geometric KPIs (always computable from spatial data)
       const dr = await db.one(
         "SELECT MIN(ST_Distance(ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, geom::geography)) AS min_dist, COUNT(*)::INTEGER AS point_count FROM spatial_points WHERE project_id = $3",
         [wgsLng, wgsLat, projectId]
       );
       const minDist = parseFloat(dr.min_dist || "0");
-      const distScore = Math.min(minDist / 500, 1.0); // normalized: 0m=0, 500m+=100 (beyond 500m no conflict)
-      const blindScore = Math.min(minDist / 3000, 1.0); // further from existing = more blindspot coverage value
       const nearbyCount = parseInt(dr.point_count || "0");
-      const densScore = Math.min(nearbyCount / 50, 1.0); // more nearby points = higher commercial density
-            // Load KPI category map from database (cached per request session)
-      // Falls back to empty map if table doesn't exist yet
-      let kpiCategory: Record<string, string> = {};
-      try {
-        const rows = await db.manyOrNone(
-          "SELECT kpi_name, category FROM kpi_category_map"
-        );
-        for (const r of rows || []) {
-          kpiCategory[r.kpi_name] = r.category;
-        }
-      } catch (e: any) {
-        console.warn("[SiteOpt] kpi_category_map load failed, using empty map:", e.message);
+
+      // distanceScore: how far from existing stores (closer = more conflict, lower score)
+      rawKpis["distanceWeight"] = minDist;       // legacy compat
+      rawKpis["competitorDistance"] = minDist;
+      rawKpis["competitorDistanceSafe"] = minDist;
+
+      // blindSpotScore: further from existing = fills more blindspot
+      rawKpis["blindSpotWeight"] = minDist;       // legacy compat
+
+      // competition KPIs
+      const comp500m = comp.competitorCount500m || 0;
+      const comp1000m = comp.competitorCount1000m || 0;
+      rawKpis["competitionDensity"] = comp500m;
+      rawKpis["competitorAvoidance"] = comp500m;
+      rawKpis["competitionSweetSpot"] = comp500m;
+      rawKpis["competitorClustering"] = comp500m;
+      rawKpis["hotelCluster"] = comp1000m;
+      rawKpis["beautyCluster"] = comp1000m;
+      rawKpis["autoCluster"] = comp1000m;
+
+      // density KPIs
+      rawKpis["densityWeight"] = nearbyCount;     // legacy compat
+      rawKpis["poiDensity"] = nearbyCount;
+      rawKpis["commercialDensity"] = nearbyCount;
+      rawKpis["residentialDensity"] = nearbyCount;
+
+      // competition gap/overlap from triangulation (global metrics, same for all candidates)
+      rawKpis["gapRatio"] = comp.gapRatio || 0;
+      rawKpis["overlapRatio"] = 0;
+      rawKpis["cannibalizationIndex"] = 0;
+
+      // site KPIs — default to mid-range when data unavailable
+      rawKpis["rentFactor"] = 1.0;
+      rawKpis["rentLevel"] = 0.5;
+      rawKpis["roadFrontage"] = 50;
+      rawKpis["roadFrontageBonus"] = 0;
+      rawKpis["streetAccess"] = 0;
+      rawKpis["landAvailability"] = 3000;
+      rawKpis["zoningCompliance"] = 0.7;
+      rawKpis["policyCompliance"] = 150;
+      rawKpis["transportConvenience"] = 2;
+      rawKpis["barrierBonus"] = 0;
+
+      // reach KPIs
+      rawKpis["walkableRatio"] = Math.min(1, minDist / 500);
+      rawKpis["coverageRatio"] = 0.5;
+      rawKpis["footTraffic"] = Math.max(1, (bm.avgRating * bm.sampleSize * 0.5) || 10);
+      rawKpis["visibility"] = Math.round(bm.taggedRatio * 10) || 0;
+      rawKpis["deliveryCoverage"] = bm.deliveryRatio || 0.5;
+      rawKpis["brandProtection"] = minDist;
+      rawKpis["schoolProximity"] = 0;
+      rawKpis["dineInRadius"] = nearbyCount;
+
+      // density KPIs (more detailed)
+      rawKpis["populationStructure"] = 0.5;
+      rawKpis["populationDensity"] = Math.max(nearbyCount * 100, (bm.sampleSize * 50) || 500);
+      rawKpis["medicalCoverage"] = 0.5;
+      rawKpis["trafficAccessibility"] = 2;
+      rawKpis["regionalCarOwnership"] = 50;
+      rawKpis["parkingAvailability"] = Math.round(Math.min(bm.medianPhotoCount / 5, 10)) || 0;
+      rawKpis["communityMaturity"] = bm.businessAreaRatio || 0.5;
+      rawKpis["highIncomeDensity"] = bm.avgCost > 0 ? Math.round(bm.avgCost * 2) : 20;
+      rawKpis["familyDensity"] = nearbyCount * 20;
+      rawKpis["carOwnershipDensity"] = 50;
+
+      // competition hard-filter (only set if explicitly available)
+      rawKpis["competitorDistanceHard"] = minDist;
+
+      // ---- Normalize via KPI engine ----
+      const { scores, hardFilterPassed } = batchNormalizeKpis(rawKpis, kpiNormalizers);
+
+      // ---- Weighted sum ----
+      let total: number;
+      if (!hardFilterPassed) {
+        total = 0; // candidate eliminated by hard filter
+      } else {
+        total = weightedSum(scores, normalizedKpi);
       }
 
-      let total = 0;
-      for (const [kpiName, weight] of Object.entries(normalizedKpi)) {
-        const cat = kpiCategory[kpiName] || "reach";
-        if (cat === "competition") {
-          total += compScore * weight;
-        } else if (cat === "density") {
-          total += densScore * weight;
-        } else if (cat === "site") {
-          total += blindScore * weight;
-        } else {
-          total += distScore * weight;
-        }
-      }
+      // ---- Decision advice ----
+      const advice = await generateAdvice({ industry: options.industry });
+
+      // Compute legacy dimensions for backward compatibility
+      const distScore = Math.min(minDist / 500, 1.0);
+      const blindScore = Math.min(minDist / 3000, 1.0);
+      const compScore = Math.max(0, 1 - comp500m / 5);
+      const densScore = Math.min(nearbyCount / 50, 1.0);
+
       scored.push({ name: c.name, lng: c.lng, lat: c.lat,
         score: Math.round(total * 100),
+        hardFilterPassed,
+        kpiScores: scores,
         dimensions: {
           distanceScore: Math.round(distScore * 100),
           blindSpotScore: Math.round(blindScore * 100),
@@ -624,14 +786,64 @@ export async function computeSiteOptimization(
           densityScore: Math.round(densScore * 100),
           minDistanceMeters: Math.round(minDist),
           nearbyPoints: nearbyCount,
-          competitors500m: comp.competitorCount500m,
-          competitors1000m: comp.competitorCount1000m,
+          competitors500m: comp500m,
+          competitors1000m: comp1000m,
           saturation: comp.saturation,
           gapRatio: comp.gapRatio,
+          avgRating: bm.avgRating,
+          avgCost: bm.avgCost,
+          businessAreaRatio: bm.businessAreaRatio,
+          lateNightRatio: bm.lateNightRatio,
         },
         advice: advice.map(a => ({ priority: a.priority, message: a.message })) });
     }
+
     scored.sort((a, b) => b.score - a.score);
+
+    // v2.1: 行业洞察评估
+    if (options.industry) {
+      try {
+        const { evaluateCandidates } = require("./insightEngine");
+        const kpiContexts = scored.map((s: any) => ({
+          name: s.name,
+          lng: s.lng || 0,
+          lat: s.lat || 0,
+          competitorCount300m: s.dimensions?.competitors500m > 0 ? (s.dimensions.competitors300m || s.dimensions.competitors500m) : 0,
+          competitorCount500m: s.dimensions?.competitors500m || 0,
+          competitorCount1000m: s.dimensions?.competitors1000m || 0,
+          minDistanceToExisting: s.dimensions?.minDistanceMeters || 0,
+          area: s.area || 100,
+          brand: s.brand || 0.5,
+          roadFrontage: 50,
+          populationDensity: s.dimensions?.nearbyPoints || 0,
+          footTraffic: 10,
+          parkingAvailability: 0,
+          nearMetro: false,
+          nearHospital: false,
+          nearSchool: false,
+          isCommercialZone: true,
+          isResidentialZone: false,
+        }));
+        const insightMap = await evaluateCandidates(options.industry, kpiContexts);
+        for (const s of scored as any[]) {
+          const insight = insightMap.get(s.name);
+          if (insight) {
+            s.eliminated = insight.eliminated;
+            s.eliminationReason = insight.eliminationReason;
+            s.insights = insight.insights;
+            if (insight.eliminated) s.score = 0;
+          }
+        }
+        scored.sort((a: any, b: any) => {
+          if (a.eliminated && !b.eliminated) return 1;
+          if (!a.eliminated && b.eliminated) return -1;
+          return b.score - a.score;
+        });
+      } catch (err: any) {
+        console.warn("[SiteOpt] Insight evaluation failed:", err.message);
+      }
+    }
+
     return { candidates: scored.slice(0, topK), weights: normalizedKpi, algorithm, industry: options.industry || null };
   });
 }

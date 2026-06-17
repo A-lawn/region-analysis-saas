@@ -1,3 +1,4 @@
+import logger from "../utils/logger";
 ﻿import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import db from "../db";
@@ -117,7 +118,7 @@ router.post("/analysis/run", authenticateApiKey, async (req: Request, res: Respo
       analyses,
     });
   } catch (err: any) {
-    console.error("API v1 run error:", err);
+    logger.error({ error: err.message }, "[APIv1] Run error");
     res.status(500).json({ error: err.message });
   }
 });

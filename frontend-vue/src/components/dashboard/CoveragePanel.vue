@@ -1,12 +1,8 @@
-﻿<template>
+<template>
   <div class="panel">
     <h4 class="panel-title">覆盖范围分析</h4>
-    <div class="param-group" v-if="industryRadii.length">
-      <label class="param-group-label">行业预设</label>
-      <select v-model="selectedIndustry" @change="onIndustryChange" class="industry-select">
-        <option value="">自定义半径</option>
-        <option v-for="ind in industryRadii" :key="ind.industry" :value="ind.industry">{{ ind.label }} ({{ ind.radiusMeters }}m)</option>
-      </select>
+    <div class="param-group">
+      <IndustrySelector v-model="selectedIndustry" @change="onIndustryChange" />
       <div v-if="selectedIndustry" class="preset-hint">
         预设半径 {{ getPresetRadius() }}m · 滑动滑块将切换为自定义
       </div>
@@ -43,6 +39,12 @@
       </label>
     </div>
     <div class="param-group">
+      <label class="checkbox-label">
+        <input type="checkbox" v-model="showGameOverlay" />
+        博弈盲区风险评估
+      </label>
+    </div>
+    <div class="param-group">
       <div class="param-group-row">
         <label class="checkbox-label">
           <input type="checkbox" v-model="enableClip" />
@@ -56,7 +58,7 @@
       </div>
     </div>
     <div class="param-group">
-      <label class="param-group-label">路网等时圈 (OSRM)</label>
+      <label class="param-group-label">路网等时圈</label>
       <div class="radio-row">
         <label class="radio-label">
           <input type="radio" v-model="networkMode" value="" />
@@ -67,12 +69,35 @@
           步行
         </label>
         <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="cycling" />
+          骑行
+        </label>
+        <label class="radio-label">
           <input type="radio" v-model="networkMode" value="driving" />
           驾车
         </label>
       </div>
+      <div class="radio-row" style="margin-top: 4px">
+        <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="bus" />
+          公交
+        </label>
+        <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="subway" />
+          地铁
+        </label>
+        <label class="radio-label">
+          <input type="radio" v-model="networkMode" value="bus+subway" />
+          公交+地铁
+        </label>
+        <span class="param-hint" style="color: var(--color-text-tertiary); margin-left: auto;">🚇 高德公交API</span>
+      </div>
     </div>
     <TaskProgress v-if="task" :task="task" />
+    <div v-if="industryMismatchError" class="mismatch-warn">
+      ⚠ {{ industryMismatchError }}
+      <button class="btn btn-sm" @click="selectedIndustry = ''; industryMismatchError = ''; runAnalysis()">切换为全部行业</button>
+    </div>
     <div v-if="result" class="result-section">
       <template v-if="Array.isArray(result)">
         <div v-if="selectedIndustry && !result[0]?.triangulation?.totalEdges" class="empty-industry-warn">
@@ -153,15 +178,15 @@
           <div class="section-divider">L2 · 门店效率</div>
           <div class="result-stat">
             <span class="stat-label">独家覆盖</span>
-            <span class="stat-value" style="color: #34C759">{{ ((result.overlapLayers.single || 0) / 1000000).toFixed(2) }} km²</span>
+            <span class="stat-value" style="color: var(--color-success)">{{ ((result.overlapLayers.single || 0) / 1000000).toFixed(2) }} km²</span>
           </div>
           <div class="result-stat">
             <span class="stat-label">双重覆盖</span>
-            <span class="stat-value" style="color: #FF9500">{{ ((result.overlapLayers.double || 0) / 1000000).toFixed(2) }} km²</span>
+            <span class="stat-value" style="color: var(--color-warning)">{{ ((result.overlapLayers.double || 0) / 1000000).toFixed(2) }} km²</span>
           </div>
           <div class="result-stat">
             <span class="stat-label">三重及以上</span>
-            <span class="stat-value" style="color: #FF3B30">{{ ((result.overlapLayers.triplePlus || 0) / 1000000).toFixed(2) }} km²</span>
+            <span class="stat-value" style="color: var(--color-error)">{{ ((result.overlapLayers.triplePlus || 0) / 1000000).toFixed(2) }} km²</span>
           </div>
           <div :class="['map-hint', { 'map-hint-warn': (result.cannibalizationIndex || 0) > 50 }]">
             蚕食指数 {{ result.cannibalizationIndex || 0 }}%<template v-if="(result.cannibalizationIndex || 0) > 50"> —— 建议优化门店间距以减少互相竞争</template><template v-else> —— 你的门店互相抢占了 {{ result.cannibalizationIndex || 0 }}% 的服务区域</template>
@@ -217,7 +242,9 @@
 </template>
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getCoverage, getIndustryRadii, type IndustryRadius } from '@/api'
+import { getCoverage } from '@/api'
+import IndustrySelector from '@/components/shared/IndustrySelector.vue'
+import { useIndustryStore } from '@/stores/industry'
 import AnalysisParams, { type AnalysisParam } from '@/components/shared/AnalysisParams.vue'
 import TaskProgress from '@/components/shared/TaskProgress.vue'
 import type { CoverageResult, TaskInfo } from '@/types'
@@ -239,14 +266,16 @@ const values = ref<any>({ radius: 1000 })
 const multiRadius = ref(false)
 const decayMode = ref(false)
 const showWhiteSpace = ref(false)
+const showGameOverlay = ref(false)
 const showVoronoi = ref(false)
 const voronoiResult = ref<any>(null)
 const enableClip = ref(false)
 const clipGeojson = ref<any>(null)
 const clipBoundaryName = ref('')
 const networkMode = ref('')
-const industryRadii = ref<IndustryRadius[]>([])
+const industryStore = useIndustryStore()
 const selectedIndustry = ref('')
+const industryMismatchError = ref('')
 const result = ref<CoverageResult | CoverageResult[] | null>(null)
 const expandedRadii = ref<boolean[]>([true, true, true])
 
@@ -258,25 +287,22 @@ const voronoiPalette: string[][] = [
   ["rgba(52,120,246,0.18)", "#3478F6"], ["rgba(48,219,176,0.18)", "#30DBB0"],
 ]
 
-onMounted(async () => {
-  try {
-    const { industries } = await getIndustryRadii()
-    industryRadii.value = industries
-  } catch {}
+onMounted(() => {
+  industryStore.fetchIndustries()
 })
 
 function onIndustryChange() {
-  const match = industryRadii.value.find(i => i.industry === selectedIndustry.value)
+  const match = industryStore.industryList.find(i => i.industry === selectedIndustry.value)
   if (match) {
     values.value.radius = match.radiusMeters
   }
 }
 function getPresetRadius(): number | null {
-  const match = industryRadii.value.find(i => i.industry === selectedIndustry.value)
+  const match = industryStore.industryList.find(i => i.industry === selectedIndustry.value)
   return match ? match.radiusMeters : null
 }
 function industryLabel(code: string): string {
-  const match = industryRadii.value.find(i => i.industry === code)
+  const match = industryStore.industryList.find(i => i.industry === code)
   return match ? match.label : code
 }
 
@@ -390,7 +416,7 @@ function toggleRadius(i: number) {
 function onUpdate(v: Record<string, number>) {
   values.value = v
   // Bidirectional sync: slider matches a preset → auto-select it; otherwise → custom
-  const match = industryRadii.value.find(i => i.radiusMeters === v.radius)
+  const match = industryStore.industryList.find(i => i.radiusMeters === v.radius)
   if (match) {
     selectedIndustry.value = match.industry
   } else {
@@ -399,6 +425,7 @@ function onUpdate(v: Record<string, number>) {
 }
 
 async function runAnalysis() {
+    industryMismatchError.value = ''
   task.value = { taskId: '', status: 'running' }
   try {
     const clip = enableClip.value ? clipGeojson.value : undefined
@@ -438,7 +465,14 @@ async function runAnalysis() {
       }
     }
   } catch (e: any) {
-    task.value = { taskId: '', status: 'failed', error: e.message }
+    const code = e?.response?.data?.code || '';
+    if (code === 'INDUSTRY_MISMATCH' || code === 'NO_SPATIAL_DATA') {
+      // Friendly user-facing error, not a server failure
+      task.value = { taskId: '', status: 'failed', error: e.response?.data?.error || e.message }
+      industryMismatchError.value = e.response?.data?.error || '数据与所选行业不匹配'
+    } else {
+      task.value = { taskId: '', status: 'failed', error: e.message }
+    }
   }
 }
 </script>
@@ -475,18 +509,18 @@ async function runAnalysis() {
 .result-stat { display: flex; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); }
 .stat-label { font-size: var(--text-sm); color: var(--color-text-secondary); }
 .stat-value { font-weight: var(--font-semibold); color: var(--color-accent); font-variant-numeric: tabular-nums; }
-.stat-value-warn { color: #FF3B30 !important; }
-.stat-value-mid { color: #FF9500 !important; }
-.stat-value-good { color: #34C759 !important; }
+.stat-value-warn { color: var(--color-error) !important; }
+.stat-value-mid { color: var(--color-warning) !important; }
+.stat-value-good { color: var(--color-success) !important; }
 .section-divider { padding: var(--space-3) 0 var(--space-1); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-1); }
 .weight-hint { font-size: var(--text-xs); color: var(--color-text-tertiary); font-weight: var(--font-normal); margin-left: var(--space-1); }
 .advice-card { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3); margin-top: var(--space-2); background: var(--color-bg-card-solid); border-radius: var(--radius-sm); border-left: 3px solid var(--color-border); }
-.advice-high { border-left-color: #FF3B30; }
-.advice-medium { border-left-color: #FF9500; }
+.advice-high { border-left-color: var(--color-error); }
+.advice-medium { border-left-color: var(--color-warning); }
 .advice-low { border-left-color: var(--color-text-tertiary); }
 .advice-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
-.dot-high { background: #FF3B30; }
-.dot-medium { background: #FF9500; }
+.dot-high { background: var(--color-error); }
+.dot-medium { background: var(--color-warning); }
 .dot-low { background: var(--color-text-tertiary); }
 .advice-text { font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.4; }
 .map-hint-warn { background: rgba(255, 59, 48, 0.08) !important; border-color: rgba(255, 59, 48, 0.2) !important; }
@@ -509,4 +543,7 @@ async function runAnalysis() {
 .preset-hint { font-size: var(--text-xs); color: var(--color-text-tertiary); margin-top: 2px; font-style: italic; }
 .empty-industry-warn { margin: var(--space-3) 0; padding: var(--space-3); background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.2); border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--color-text-primary); line-height: 1.5; }
 .empty-industry-hint { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+.mismatch-warn { margin: var(--space-3) 0; padding: var(--space-3); background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.2); border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--color-text-primary); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.mismatch-warn .btn { white-space: nowrap; }
 </style>
+

@@ -1,0 +1,1 @@
+﻿const { Pool } = require("pg"); const pool = new Pool(); pool.query("SELECT name, lng::text, lat::text, ST_X(geom)::text as glng, ST_Y(geom)::text as glat FROM spatial_points WHERE name LIKE '%端履%' LIMIT 3").then(r => { console.log(JSON.stringify(r.rows)); pool.end(); }).catch(e => { console.error(e.message); pool.end(); });

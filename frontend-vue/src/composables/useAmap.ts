@@ -1,4 +1,4 @@
-﻿import { ref } from 'vue'
+import { ref } from 'vue'
 
 const MAP_KEY = import.meta.env.VITE_AMAP_WEB_KEY || ''
 const MAP_SECRET = import.meta.env.VITE_AMAP_SECRET || ''
@@ -75,6 +75,7 @@ export function useAmap() {
   }
 
   function clearOverlays() {
+    clearAllMarkerGroups()
     // AMap clearMap() does not remove HeatMap canvas overlay, so remove explicitly
     if (heatmapLayer.value) {
       heatmapLayer.value.setMap(null)
@@ -113,12 +114,15 @@ export function useAmap() {
     })
   }
 
-  function addHeatmapLayer(points: { lng: number; lat: number; weight: number }[]) {
+  function addHeatmapLayer(points: { lng: number; lat: number; weight: number }[], opts?: { bandwidthM?: number }) {
     const map = amapInstance.value
     if (!map || !(window as any).AMap.HeatMap) return
     if (heatmapLayer.value) heatmapLayer.value.setMap(null)
+    // Link render radius to backend KDE bandwidth
+    const bw = opts?.bandwidthM || 1000
+    const renderRadius = Math.min(35, Math.max(5, Math.round(8 + (bw - 200) * 0.005)))
     heatmapLayer.value = new (window as any).AMap.HeatMap(map, {
-      radius: 25,
+      radius: renderRadius,
       opacity: [0, 0.8],
       gradient: { 0: 'rgba(102, 255, 0, 0)', 0.25: 'rgb(102,255,0)', 0.5: 'rgb(255,255,0)', 0.75: 'rgb(255,102,0)', 1: 'rgb(255,0,0)' },
     })
@@ -215,9 +219,64 @@ export function useAmap() {
     })
   }
 
+  // Marker groups for multi-color rendering
+
+  interface MarkerGroup {
+    groupId: string
+    points: { lng: number; lat: number; name?: string; label?: string; color?: string }[]
+  }
+
+  const markerGroups = ref<Map<string, any[]>>(new Map())
+
+  function addMarkersByGroup(groups: MarkerGroup[]) {
+    const map = amapInstance.value
+    if (!map) return
+    // Remove old groups first
+    groups.forEach((g) => {
+      removeMarkersByGroup(g.groupId)
+      const markers: any[] = []
+      g.points.forEach((p, i) => {
+        const opts: any = { position: [p.lng, p.lat], title: p.name || '' }
+        if (p.label) {
+          opts.label = {
+            content: '<div style="background:' + (p.color || '#1677ff') + ';color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;white-space:nowrap">' + p.label + '</div>',
+            offset: [0, -24],
+          }
+        } else if (p.name) {
+          opts.label = { content: p.name, offset: [0, -20], direction: 'top' as any }
+        }
+        // Color-coded markers via AMap.Icon
+        if (p.color) {
+          opts.icon = new (window as any).AMap.Icon({
+            size: new (window as any).AMap.Size(18, 26),
+            imageSize: new (window as any).AMap.Size(18, 26),
+            image: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="26" viewBox="0 0 18 26"><path d="M9 0C4.03 0 0 4.03 0 9c0 6.75 9 17 9 17s9-10.25 9-17C18 4.03 13.97 0 9 0z" fill="' + p.color + '" stroke="#fff" stroke-width="1.5"/><circle cx="9" cy="9" r="3" fill="#fff" opacity="0.9"/></svg>'),
+          })
+        }
+        const m = new (window as any).AMap.Marker(opts)
+        m.setMap(map)
+        markers.push(m)
+      })
+      markerGroups.value.set(g.groupId, markers)
+    })
+  }
+
+  function removeMarkersByGroup(groupId: string) {
+    const markers = markerGroups.value.get(groupId)
+    if (markers) {
+      markers.forEach((m: any) => m.setMap(null))
+      markerGroups.value.delete(groupId)
+    }
+  }
+
+  function clearAllMarkerGroups() {
+    markerGroups.value.forEach((markers) => markers.forEach((m: any) => m.setMap(null)))
+    markerGroups.value.clear()
+  }
+
   return {
     initMap, getMap, fitBounds, clearOverlays, loadScript,
-    addClusterLayer, addMarkers, addHeatmapLayer, addGeoJSONPolygons, addCircles, addPolygons,
+    addClusterLayer, addMarkers, addHeatmapLayer, addGeoJSONPolygons, addCircles, addPolygons, addMarkersByGroup, removeMarkersByGroup, clearAllMarkerGroups,
   }
 }
 

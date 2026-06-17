@@ -1,3 +1,4 @@
+import logger from "../utils/logger";
 import db from "../db";
 
 export interface VoronoiPolygon {
@@ -50,7 +51,7 @@ export async function computeVoronoi(projectId: string): Promise<VoronoiPolygon[
       areaSqm: r.area_sqm,
     }));
   } catch (err: any) {
-    console.error("Voronoi error:", err.message);
+    logger.error({ error: err.message }, "[Voronoi] Failed");
     return [];
   }
 }
@@ -94,7 +95,7 @@ export async function computeClusterVoronoi(
 
     return results;
   } catch (err: any) {
-    console.error("Cluster Voronoi error:", err.message);
+    logger.error({ error: err.message }, "[ClusterVoronoi] Failed");
     return [];
   }
 }
