@@ -10,13 +10,9 @@
 |:---:|:---:|
 | ![快速分析](docs/screenshots/quick-analysis.png) | ![我的数据](docs/screenshots/my-data.png) |
 
-| 定价对比 | Dashboard 分析 |
+| 覆盖分析 | Dashboard 分析 |
 |:---:|:---:|
-| ![定价](docs/screenshots/pricing.png) | ![Dashboard](docs/screenshots/dashboard.png) |
-
-| 分析报告 |
-|:---:|
-| ![报告](docs/screenshots/report.png) |
+| ![覆盖分析](docs/screenshots/coverage-analysis.png) | ![Dashboard](docs/screenshots/dashboard.png) |
 
 ---
 
@@ -88,7 +84,7 @@
 │       └── router/         # Vue Router + auth guard
 ├── database/               # 建库脚本 + 迁移（001-019）
 ├── nginx/                  # 反向代理配置
-├── sample-data/            # 测试数据（西安各区 CSV）
+├── sample-data/            # 测试数据
 ├── docker-compose.yml      # 多服务编排
 └── .env.example            # 环境变量模板
 ```
@@ -115,26 +111,6 @@ wget https://download.geofabrik.de/asia/china-latest.osm.pbf
 docker run -v $(pwd)/china-latest.osm.pbf:/data/osm.pbf osrm/osrm-backend osrm-extract -p /opt/car.lua /data/osm.pbf
 docker run -v $(pwd):/data osrm/osrm-backend osrm-partition /data/osrm-data.osrm
 docker compose --profile with-osrm up -d
-```
-
----
-
-## 管理员配置
-
-切换全局订阅模式（数据库操作）：
-
-```sql
--- 全员专业模式（MVP 验证期）
-INSERT INTO system_config (config_key, config_value, description)
-VALUES ('subscription_mode', '"full_access"', '全员专业')
-ON CONFLICT (config_key) DO UPDATE SET config_value = '"full_access"', updated_at = NOW();
-
--- 切回分层模式（正式上线）
-UPDATE system_config SET config_value = '"tiered"' WHERE config_key = 'subscription_mode';
-
--- 单独升级用户
-UPDATE users SET metadata = jsonb_set(metadata, '{subscription_tier}', '"pro"')
-WHERE email = 'xxx@xxx.com';
 ```
 
 ---
