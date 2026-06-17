@@ -138,3 +138,121 @@ export async function batchCompetitionAnalysis(
 ): Promise<CompetitionResult[]> {
   return Promise.all(candidates.map(c => computeCompetitionAnalysis(projectId, c, industry)));
 }
+
+
+// ================================================================
+// Business Metrics — commercial body data from public_poi.metadata
+// ================================================================
+
+export interface BusinessMetrics {
+  /** 周边500m竞品评分均值 (0-5) */
+  avgRating: number;
+  /** 周边500m人均消费均值 */
+  avgCost: number;
+  /** 周边500m商圈内POI占比 (0-1) */
+  businessAreaRatio: number;
+  /** 周边500m深夜营业(22:00后)占比 (0-1) */
+  lateNightRatio: number;
+  /** 周边500m支持外卖的POI占比 (0-1) */
+  deliveryRatio: number;
+  /** 周边500m高评分(≥4.0)竞品数 */
+  highRatedCount: number;
+  /** 周边500m竞品图片数中位数（线上运营活跃度代理） */
+  medianPhotoCount: number;
+  /** 周边500m有标签的POI占比 (0-1) */
+  taggedRatio: number;
+  /** 周边500m采样POI数（分母） */
+  sampleSize: number;
+}
+
+/**
+ * 从 public_poi 查询候选点周边的商业体聚合指标
+ * @param candidate 候选点位
+ * @param industry 行业代码（只统计同类竞品）
+ * @param radiusM 查询半径（默认500m）
+ */
+export async function computeBusinessMetrics(
+  candidate: { lng: number; lat: number },
+  industry: string,
+  radiusM: number = 500
+): Promise<BusinessMetrics> {
+  const defaultResult: BusinessMetrics = {
+    avgRating: 0, avgCost: 0, businessAreaRatio: 0,
+    lateNightRatio: 0, deliveryRatio: 0, highRatedCount: 0,
+    medianPhotoCount: 0, taggedRatio: 0, sampleSize: 0,
+  };
+
+  try {
+    const row = await db.oneOrNone(
+      `SELECT
+        COUNT(*)::INTEGER AS sample_size,
+        ROUND(AVG(NULLIF(metadata->>'rating','')::numeric), 1) AS avg_rating,
+        ROUND(AVG(NULLIF(metadata->>'cost','')::numeric), 0) AS avg_cost,
+        ROUND(
+          COUNT(*) FILTER (WHERE metadata->>'business_area' IS NOT NULL
+                                AND metadata->>'business_area' != '')
+          / NULLIF(COUNT(*), 0)::numeric, 2
+        ) AS business_area_ratio,
+        ROUND(
+          COUNT(*) FILTER (WHERE metadata->>'opentime' ~ '2[2-4]:|0[0-5]:')
+          / NULLIF(COUNT(*), 0)::numeric, 2
+        ) AS late_night_ratio,
+        ROUND(
+          COUNT(*) FILTER (WHERE metadata->>'meal_ordering' = '1')
+          / NULLIF(COUNT(*), 0)::numeric, 2
+        ) AS delivery_ratio,
+        COUNT(*) FILTER (WHERE NULLIF(metadata->>'rating','')::numeric >= 4.0)::INTEGER AS high_rated_count,
+        COALESCE(
+          PERCENTILE_CONT(0.5) WITHIN GROUP (
+            ORDER BY NULLIF(metadata->>'photo_count','')::integer
+          ), 0
+        )::INTEGER AS median_photo_count,
+        ROUND(
+          COUNT(*) FILTER (WHERE metadata->'tags' IS NOT NULL)
+          / NULLIF(COUNT(*), 0)::numeric, 2
+        ) AS tagged_ratio
+      FROM public_poi
+      WHERE industry = $[industry]
+        AND city = '西安'
+        AND ST_DWithin(
+          geom::geography,
+          ST_SetSRID(ST_MakePoint($[lng], $[lat]), 4326)::geography,
+          $[radius]
+        )`,
+      { industry, lng: candidate.lng, lat: candidate.lat, radius: radiusM }
+    );
+
+    if (!row || row.sample_size === 0) return defaultResult;
+
+    return {
+      avgRating: parseFloat(row.avg_rating) || 0,
+      avgCost: parseInt(row.avg_cost) || 0,
+      businessAreaRatio: parseFloat(row.business_area_ratio) || 0,
+      lateNightRatio: parseFloat(row.late_night_ratio) || 0,
+      deliveryRatio: parseFloat(row.delivery_ratio) || 0,
+      highRatedCount: parseInt(row.high_rated_count) || 0,
+      medianPhotoCount: parseInt(row.median_photo_count) || 0,
+      taggedRatio: parseFloat(row.tagged_ratio) || 0,
+      sampleSize: parseInt(row.sample_size) || 0,
+    };
+  } catch (err: any) {
+    logger.error({ error: err.message, candidate }, "[BusinessMetrics] Query failed");
+    return defaultResult;
+  }
+}
+
+/**
+ * 批量版本：对多个候选点并行查询商业体指标
+ */
+export async function batchBusinessMetrics(
+  candidates: { name: string; lng: number; lat: number }[],
+  industry: string,
+  radiusM: number = 500
+): Promise<Map<string, BusinessMetrics>> {
+  const results = new Map<string, BusinessMetrics>();
+  const metricsList = await Promise.all(
+    candidates.map(c => computeBusinessMetrics(c, industry, radiusM))
+  );
+  candidates.forEach((c, i) => results.set(c.name, metricsList[i]));
+  return results;
+}

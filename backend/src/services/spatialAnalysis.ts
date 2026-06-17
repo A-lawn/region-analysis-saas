@@ -2,7 +2,7 @@ import db from "../db";
 import { config } from "../config";
 import { cacheGet, cacheSet } from "./cacheService";
 import crypto from "crypto";
-import { batchCompetitionAnalysis } from "./competitionService";
+import { batchCompetitionAnalysis, batchBusinessMetrics, BusinessMetrics } from "./competitionService";
 import { generateAdvice, generateAdviceSync } from "./decisionEngine";
 import { AppError } from "../middleware/errorHandler";
 import { batchNormalizeKpis, weightedSum } from "./analysis/kpiNormalizer";
@@ -632,6 +632,11 @@ export async function computeSiteOptimization(
 
     const compResults = await batchCompetitionAnalysis(projectId, candidates);
 
+    // 查询商业体聚合指标（public_poi.metadata：评分/消费/商圈/夜间/外卖等）
+    const businessMetricsMap = options.industry
+      ? await batchBusinessMetrics(candidates, options.industry)
+      : new Map<string, BusinessMetrics>();
+
     // P1-2: Load KPI normalizer registry from kpi_category_map (includes normalization_type + params)
     let kpiNormalizers: KpiNormalizerEntry[] = [];
     try {
@@ -664,6 +669,13 @@ export async function computeSiteOptimization(
         console.warn("[SiteOpt] CRS conversion failed for candidate:", c.name);
       }
       const comp = compResults[i] || { saturation: 'medium' as const, competitorCount500m: 0, competitorCount1000m: 0, gapRatio: 1 };
+
+      // ---- Business metrics from public_poi ----
+      const bm: BusinessMetrics = businessMetricsMap.get(c.name) || {
+        avgRating: 0, avgCost: 0, businessAreaRatio: 0,
+        lateNightRatio: 0, deliveryRatio: 0, highRatedCount: 0,
+        medianPhotoCount: 0, taggedRatio: 0, sampleSize: 0,
+      };
 
       // ---- Compute raw KPI values for this candidate ----
       const rawKpis: KpiValueMap = {};
@@ -721,22 +733,22 @@ export async function computeSiteOptimization(
       // reach KPIs
       rawKpis["walkableRatio"] = Math.min(1, minDist / 500);
       rawKpis["coverageRatio"] = 0.5;
-      rawKpis["footTraffic"] = 10;
-      rawKpis["visibility"] = 0;
-      rawKpis["deliveryCoverage"] = 0.5;
+      rawKpis["footTraffic"] = Math.max(1, (bm.avgRating * bm.sampleSize * 0.5) || 10);
+      rawKpis["visibility"] = Math.round(bm.taggedRatio * 10) || 0;
+      rawKpis["deliveryCoverage"] = bm.deliveryRatio || 0.5;
       rawKpis["brandProtection"] = minDist;
       rawKpis["schoolProximity"] = 0;
       rawKpis["dineInRadius"] = nearbyCount;
 
       // density KPIs (more detailed)
       rawKpis["populationStructure"] = 0.5;
-      rawKpis["populationDensity"] = nearbyCount * 100;
+      rawKpis["populationDensity"] = Math.max(nearbyCount * 100, (bm.sampleSize * 50) || 500);
       rawKpis["medicalCoverage"] = 0.5;
       rawKpis["trafficAccessibility"] = 2;
       rawKpis["regionalCarOwnership"] = 50;
-      rawKpis["parkingAvailability"] = 0;
-      rawKpis["communityMaturity"] = 0.5;
-      rawKpis["highIncomeDensity"] = 20;
+      rawKpis["parkingAvailability"] = Math.round(Math.min(bm.medianPhotoCount / 5, 10)) || 0;
+      rawKpis["communityMaturity"] = bm.businessAreaRatio || 0.5;
+      rawKpis["highIncomeDensity"] = bm.avgCost > 0 ? Math.round(bm.avgCost * 2) : 20;
       rawKpis["familyDensity"] = nearbyCount * 20;
       rawKpis["carOwnershipDensity"] = 50;
 
@@ -778,6 +790,10 @@ export async function computeSiteOptimization(
           competitors1000m: comp1000m,
           saturation: comp.saturation,
           gapRatio: comp.gapRatio,
+          avgRating: bm.avgRating,
+          avgCost: bm.avgCost,
+          businessAreaRatio: bm.businessAreaRatio,
+          lateNightRatio: bm.lateNightRatio,
         },
         advice: advice.map(a => ({ priority: a.priority, message: a.message })) });
     }

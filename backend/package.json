@@ -24,6 +24,7 @@
         "express-async-errors": "^3.1.1",
         "express-rate-limit": "^8.5.2",
         "h3-js": "^4.4.0",
+        "helmet": "^8.2.0",
         "ioredis": "^5.11.1",
         "jsonwebtoken": "^9.0.3",
         "multer": "^1.4.5-lts.1",

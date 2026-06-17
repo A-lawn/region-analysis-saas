@@ -16,6 +16,19 @@ export const globalLimiter = rateLimit({
   validate: { ip: false },
 } as any);
 
+// 全局注册速率上限：防止分布式多 IP 假邮箱批量注册
+export const globalRegisterCap = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "平台注册负载过高，请稍后再试",
+    code: "GLOBAL_REGISTER_CAP",
+  },
+  validate: { ip: false },
+} as any);
+
 export const registerLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
@@ -24,6 +37,10 @@ export const registerLimiter = rateLimit({
   message: {
     error: "注册请求过于频繁，请1分钟后再试",
     code: "REGISTER_RATE_LIMIT",
+  },
+  keyGenerator: (req: any) => {
+    const email = req.body?.email || "";
+    return getClientIp(req) + "@" + email;
   },
   validate: { ip: false },
 } as any);
