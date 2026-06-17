@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: ['codex/v3.0-hybrid-compute-engine']
+    branches: ['v3.1-decision-engine']
   workflow_dispatch:
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
             cd /opt/region-analysis
 
             echo "[1/5] Pulling latest code..."
-            git fetch origin && git reset --hard origin/codex/v3.0-hybrid-compute-engine
+            git fetch origin && git reset --hard origin/v3.1-decision-engine
 
             echo "[2/5] Updating .env..."
             cat > .env << 'ENVEOF'
