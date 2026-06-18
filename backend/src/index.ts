@@ -32,7 +32,7 @@ import './workers/analysisWorker';
 import webController from "./controllers/webController";
 import apiV1Controller from "./controllers/apiV1Controller";
 import authController from "./controllers/authController";
-import { authRequired } from "./middleware/auth";
+import { authRequired, startKeyRotation } from "./middleware/auth";
 import { errorHandler } from "./middleware/errorHandler";
 import logger from "./utils/logger";
 import { ensureBackupDir, cleanExpiredBackups } from "./services/backupService";
@@ -244,6 +244,7 @@ async function start() {
 
   app.listen(config.port, () => {
     logger.info("=============================================");
+    startKeyRotation();
     logger.info("  区域数据分析平台 v1.0");
     logger.info({ port: config.port, env: config.nodeEnv }, "Server listening");
     logger.info("=============================================");
