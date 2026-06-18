@@ -1222,7 +1222,7 @@ onMounted(async () => {
 }
 
 .template-link {
-  color: var(--primary);
+  color: var(--color-accent);
   cursor: pointer;
   font-weight: 500;
 }
