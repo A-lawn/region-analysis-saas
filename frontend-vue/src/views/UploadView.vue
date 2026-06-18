@@ -41,7 +41,7 @@
             <span class="step-title">上传文件</span>
           </div>
           <FileDropZone @file="handleFile" />
-          <p class="template-hint">不确定格式？<a href="#" @click.prevent="downloadTemplate">下载数据模板</a>，按列填写即可</p>
+          <p class="template-hint">不确定格式？<a class="template-link" @click="downloadTemplate">下载数据模板</a>，按列填写即可</p>
           <div v-if="uploading" class="progress-bar" style="margin-top: var(--space-3)">
             <div class="progress-fill" :style="{ width: progress + '%' }"></div>
           </div>
@@ -1219,11 +1219,15 @@ onMounted(async () => {
   margin-top: var(--space-2);
   font-size: 0.85rem;
   color: var(--text-secondary);
+}
 
-  a {
-    color: var(--primary);
-    text-decoration: underline;
-    cursor: pointer;
-  }
+.template-link {
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.template-link:hover {
+  text-decoration: underline;
 }
 </style>
