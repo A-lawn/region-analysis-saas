@@ -28,15 +28,15 @@ export async function confirmUpload(payload: { uploadId: string; columnMapping: 
 }
 
 export async function downloadTemplate(): Promise<void> {
-  const res = await apiClient.get('/upload/template', { responseType: 'blob' })
-  const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a')
+  const res = await apiClient.get("/upload/template", { responseType: "blob" })
+  const blob = new Blob([res.data], { type: "text/csv;charset=utf-8" })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.style.display = "none"
   a.href = url
-  a.download = '数据上传模板.csv'
+  a.download = "\u6570\u636E\u4E0A\u4F20\u6A21\u677F.csv"
   document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  window.URL.revokeObjectURL(url)
+  setTimeout(() => { a.click(); document.body.removeChild(a); window.URL.revokeObjectURL(url) }, 100)
 }
 
 export async function listProjects(opts?: { search?: string; page?: number; limit?: number }): Promise<{ projects: any[]; total: number; page: number; limit: number; totalPages: number }> {
