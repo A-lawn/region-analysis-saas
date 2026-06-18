@@ -555,17 +555,21 @@ router.post(
   }),
 );
 
-// -------- GET /api/auth/me --------
-
 router.get(
   "/me",
   authRequired,
   asyncHandler(async (req, res) => {
+    const row = await db.oneOrNone(
+      "SELECT metadata FROM users WHERE id = $[id]",
+      { id: req.userId }
+    );
+    const meta = (row?.metadata || {}) as Record<string, any>;
     res.json({
       id: req.userId,
       email: req.userEmail,
       tenantId: req.tenantId,
       role: req.userRole,
+      subscriptionTier: meta.subscription_tier || "free",
     });
   }),
 );
@@ -585,4 +589,3 @@ router.post(
 );
 
 export default router;
-
