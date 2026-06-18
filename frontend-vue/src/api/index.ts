@@ -27,6 +27,18 @@ export async function confirmUpload(payload: { uploadId: string; columnMapping: 
   return data
 }
 
+export async function downloadTemplate(): Promise<void> {
+  const res = await apiClient.get('/upload/template', { responseType: 'blob' })
+  const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '数据上传模板.csv'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
 export async function listProjects(opts?: { search?: string; page?: number; limit?: number }): Promise<{ projects: any[]; total: number; page: number; limit: number; totalPages: number }> {
   const { data } = await apiClient.get('/projects', { params: opts })
   return data
@@ -288,4 +300,3 @@ export async function getIndustryConfig(industry: string): Promise<any> {
   const { data } = await apiClient.get('/industries/' + industry + '/model')
   return data
 }
-

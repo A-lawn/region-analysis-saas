@@ -41,6 +41,7 @@
             <span class="step-title">上传文件</span>
           </div>
           <FileDropZone @file="handleFile" />
+          <p class="template-hint">不确定格式？<a href="#" @click.prevent="downloadTemplate">下载数据模板</a>，按列填写即可</p>
           <div v-if="uploading" class="progress-bar" style="margin-top: var(--space-3)">
             <div class="progress-fill" :style="{ width: progress + '%' }"></div>
           </div>
@@ -311,7 +312,7 @@ import { useProjectStore } from '@/stores/project'
 import { useAuthStore } from '@/stores/auth'
 import { useConfigStore } from '@/stores/config'
 import type { CrsType, UploadResult, DeletedProject } from '@/types'
-import { uploadFile, confirmUpload as confirmUploadApi, listProjects } from '@/api'
+import { uploadFile, confirmUpload as confirmUploadApi, listProjects, downloadTemplate } from '@/api'
 import CrsSelector from '@/components/upload/CrsSelector.vue'
 import FileDropZone from '@/components/upload/FileDropZone.vue'
 import ColumnMapper from '@/components/upload/ColumnMapper.vue'
@@ -1213,5 +1214,16 @@ onMounted(async () => {
 
 .recycle-empty p {
   margin: 0;
+}
+.template-hint {
+  margin-top: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+
+  a {
+    color: var(--primary);
+    text-decoration: underline;
+    cursor: pointer;
+  }
 }
 </style>

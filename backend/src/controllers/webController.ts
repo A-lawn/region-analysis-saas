@@ -136,7 +136,18 @@ router.post("/upload", authRequired, upload.single("file"), validateUpload, asyn
   });
 });
 
-// ---- POST /api/web/upload/confirm (auth required) ----
+// ---- GET /api/web/upload/template (auth required) ----
+router.get("/upload/template", authRequired, (_req: Request, res: Response) => {
+  const csv = [
+    "名称,地址,经度,纬度,类别,营业额,面积,人均消费,评分,品牌分,营业时间,停车位,标签",
+    "示例店铺,西安市雁塔区长安中路123号,108.948,34.223,餐饮,5000,120,45,4.2,85,09:00-22:00,20,火锅;川菜",
+    "示例店铺2,西安市碑林区南大街456号,108.942,34.259,零售,8000,200,0,4.5,90,08:00-21:00,15,便利店",
+  ].join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=数据上传模板.csv");
+  res.send("\uFEFF" + csv);
+});
+
 router.post("/upload/confirm", authRequired, validateProjectName, async (req: Request, res: Response) => {
   const { uploadId, columnMapping } = req.body;
 
@@ -964,5 +975,4 @@ router.post("/quick-analysis/create-project", authRequired, async (req: Request,
 });
 
 export default router;
-
 
