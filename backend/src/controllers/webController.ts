@@ -136,7 +136,15 @@ router.post("/upload", authRequired, upload.single("file"), validateUpload, asyn
   });
 });
 
-// ---- POST /api/web/upload/confirm (auth required) ----
+router.get("/upload/template", authRequired, (_req: Request, res: Response) => {
+  const csv = "\uFEFF" + [
+    "\u540D\u79F0,\u5730\u5740,\u7ECF\u5EA6,\u7EAC\u5EA6,\u7C7B\u522B,\u8425\u4E1A\u989D,\u9762\u79EF,\u4EBA\u5747\u6D88\u8D39,\u8BC4\u5206,\u54C1\u724C\u5206,\u8425\u4E1A\u65F6\u95F4,\u505C\u8F66\u4F4D,\u6807\u7B7E",
+    "\u793A\u4F8B\u5E97\u94FA,\u897F\u5B89\u5E02\u96C1\u5854\u533A\u957F\u5B89\u4E2D\u8DEF123\u53F7,108.948,34.223,\u9910\u996E,5000,120,45,4.2,85,09:00-22:00,20,\u706B\u9505;\u5DDD\u83DC",
+    "\u793A\u4F8B\u5E97\u94FA2,\u897F\u5B89\u5E02\u7891\u6797\u533A\u5357\u5927\u8857456\u53F7,108.942,34.259,\u96F6\u552E,8000,200,0,4.5,90,08:00-21:00,15,\u4FBF\u5229\u5E97",
+  ].join("\n");
+  res.attachment("\u6570\u636E\u4E0A\u4F20\u6A21\u677F.csv").type("text/csv; charset=utf-8").send(csv);
+});
+
 router.post("/upload/confirm", authRequired, validateProjectName, async (req: Request, res: Response) => {
   const { uploadId, columnMapping } = req.body;
 
@@ -964,5 +972,3 @@ router.post("/quick-analysis/create-project", authRequired, async (req: Request,
 });
 
 export default router;
-
-

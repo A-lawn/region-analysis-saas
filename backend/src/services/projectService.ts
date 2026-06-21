@@ -1,4 +1,4 @@
-﻿import db from "../db";
+import db from "../db";
 import { CrsType, convertCoord as convertCoordLib } from "../utils/coordTransform";
 import { normalizeIndustry } from "../config/industry.config";
 import pgPromise from "pg-promise";
@@ -17,6 +17,11 @@ export async function processUpload(
   tenantId: string = "default"
 ): Promise<UploadResult> {
   const errors: string[] = [];
+  const MAX_ROWS = 50000;
+  if (rows.length > MAX_ROWS) {
+    return { projectId: "", rowsParsed: rows.length, rowsInserted: 0, errors: [`文件超过最大行数限制 (${MAX_ROWS}行)，请拆分后上传`] };
+  }
+  const truncate = (s: string, max: number) => s.length > max ? s.substring(0, max) : s;
   const points: { name: string; address: string; lng: number; lat: number; category?: string; revenue?: number; floor_area?: number; brand_score?: number; tags?: string; avg_cost?: number; rating?: number; open_time?: string; parking?: string }[] = [];
 
   for (let i = 0; i < rows.length; i++) {
@@ -27,17 +32,18 @@ export async function processUpload(
     if (isNaN(rawLng) || isNaN(rawLat)) continue;
     if (rawLng < -180 || rawLng > 180 || rawLat < -90 || rawLat > 90) continue;
 
-    const name = columnMapping.nameCol !== null ? String(row[columnMapping.nameCol] || "").trim() : "Point" + (i + 1);
-    const address = columnMapping.addressCol !== null ? String(row[columnMapping.addressCol] || "").trim() : "";
-            const category = columnMapping.categoryCol != null ? String(row[columnMapping.categoryCol] || '').trim() : '';
+    const rawName = columnMapping.nameCol !== null ? String(row[columnMapping.nameCol] || "").trim() : "";
+    const name = rawName ? truncate(rawName, 255) : "Point" + (i + 1);
+    const address = columnMapping.addressCol !== null ? truncate(String(row[columnMapping.addressCol] || "").trim(), 1000) : "";
+            const category = columnMapping.categoryCol != null ? truncate(String(row[columnMapping.categoryCol] || '').trim(), 100) : '';
     const revenue = columnMapping.revenueCol != null ? parseFloat(row[columnMapping.revenueCol]) || 0 : 0;
     const floor_area = columnMapping.floorAreaCol != null ? parseFloat(row[columnMapping.floorAreaCol]) || 0 : 0;
     const brand_score = columnMapping.brandScoreCol != null ? parseFloat(row[columnMapping.brandScoreCol]) || 0 : 0;
-    const tags = columnMapping.tagsCol != null ? String(row[columnMapping.tagsCol] || '').trim() : '';
+    const tags = columnMapping.tagsCol != null ? truncate(String(row[columnMapping.tagsCol] || '').trim(), 500) : '';
     const avgCost = columnMapping.avgCostCol != null ? parseFloat(row[columnMapping.avgCostCol]) || 0 : 0;
     const rating = columnMapping.ratingCol != null ? parseFloat(row[columnMapping.ratingCol]) || 0 : 0;
-    const openTime = columnMapping.openTimeCol != null ? String(row[columnMapping.openTimeCol] || '').trim() : '';
-    const parking = columnMapping.parkingCol != null ? String(row[columnMapping.parkingCol] || '').trim() : '';
+    const openTime = columnMapping.openTimeCol != null ? truncate(String(row[columnMapping.openTimeCol] || '').trim(), 200) : '';
+    const parking = columnMapping.parkingCol != null ? truncate(String(row[columnMapping.parkingCol] || '').trim(), 200) : '';
     points.push({ name, address, lng: rawLng, lat: rawLat, category, revenue, floor_area, brand_score, tags, avg_cost: avgCost, rating, open_time: openTime, parking });
   }
 
@@ -94,7 +100,7 @@ export async function processUpload(
         if (normalized) {
           meta.industry = normalized.industry;
           if (normalized.subCategory) {
-            meta.sub_category = normalized.subCategory;
+            meta.sub_category = truncate(normalized.subCategory, 100);
           }
         }
       }
@@ -232,5 +238,4 @@ export async function listProjects(
     totalPages: Math.ceil(total / limit),
   };
 }
-
 
